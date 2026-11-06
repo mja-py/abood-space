@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>عبود إلى القمر!</title>
+<meta name="description" content="لعبة فضاء: عبود رائد الفضاء يطير من محطة فلك إلى القمر والكواكب مع روبوته الذكي نبيه. Abood to the Moon! A space shooter: fly from Falak Station to the Moon and every planet.">
+<meta name="theme-color" content="#1c1530">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="عبود">
+<meta property="og:title" content="عبود إلى القمر! Abood to the Moon!">
+<meta property="og:description" content="Abood the astronaut and his AI robot Nabeeh blast through rocks, space junk and meteors on the way to the Moon, Mars and beyond.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="preload" href="assets/fonts/baloo-bhaijaan-2-arabic-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/baloo-bhaijaan-2-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="modulepreload" href="js/game.js">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="cv" data-i18n-aria="title" aria-label="عبود إلى القمر!"></canvas>
+
+<!-- ============ HUD (in flight) ============ -->
+<div class="hud" id="hud" hidden>
+  <div class="hud-l">
+    <div class="hull" id="hull" role="img" data-i18n-aria="h_hull" aria-label="الهيكل"></div>
+    <div class="hud-chips">
+      <span class="chip shield-chip" id="shieldChip" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-3 8.3-7 10-4-1.7-7-5.4-7-10V6z"/></svg><span data-i18n="h_shield">درع</span><i></i></span>
+      <span class="chip rapid-chip" id="rapidChip" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg><span data-i18n="h_rapid">نار سريعة</span><i></i></span>
+    </div>
+  </div>
+  <div class="hud-c">
+    <div class="trip" id="trip">
+      <canvas class="trip-ic" id="tripFrom" width="56" height="56" aria-hidden="true"></canvas>
+      <div class="trip-bar" id="tripBar"><i id="tripFill"></i><em class="tick t1"></em><em class="tick t2"></em><b class="trip-ship" id="tripShip" aria-hidden="true"><svg viewBox="0 0 32 18"><path d="M2 5h6l4-3h9c5 0 9 3 10 7-1 4-5 7-10 7h-9l-4-3H2l3-4z" fill="#f4f1ea" stroke="#1c1530" stroke-width="2" stroke-linejoin="round"/><circle cx="21" cy="9" r="3" fill="#2fd4e6" stroke="#1c1530" stroke-width="1.5"/></svg></b></div>
+      <canvas class="trip-ic" id="tripTo" width="56" height="56" aria-hidden="true"></canvas>
+    </div>
+    <span class="trip-leg" id="tripLeg"></span>
+  </div>
+  <div class="hud-r">
+    <div class="stat score-box" id="scoreBox"><span id="hScore" dir="ltr">0</span><em class="combo" id="comboTag" dir="ltr" hidden>×2</em></div>
+    <div class="stat coin-box" id="coinBox"><i class="coin" aria-hidden="true"></i><span id="hCoins" dir="ltr">0</span></div>
+    <button class="corner" id="pauseBtn" type="button" data-i18n-aria="a_pause" aria-label="إيقاف مؤقت">II</button>
+    <button class="corner" id="muteBtn" type="button" data-i18n-aria="a_sound" aria-label="الصوت" aria-pressed="false">♪</button>
+  </div>
+</div>
+<button class="super" id="superBtn" type="button" data-i18n-aria="a_super" aria-label="شعاع الأمل" hidden>
+  <span class="super-ring" aria-hidden="true"></span>
+  <span class="super-core" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.2 6.3L21 9l-5.2 4.1L17.6 20 12 16.3 6.4 20l1.8-6.9L3 9l6.8-.7z"/></svg><b></b></span>
+</button>
+
+<!-- ============ menu (station) ============ -->
+<div class="overlay" id="menu" hidden>
+  <div class="panel menu">
+    <div class="panel-top">
+      <div class="pills"><div class="coinpill"><i class="coin" aria-hidden="true"></i><span class="coinVal" dir="ltr">0</span></div></div>
+      <div class="tools">
+        <button class="iconbtn" id="menuMute" type="button" data-i18n-aria="a_sound" aria-label="الصوت" aria-pressed="false">♪</button>
+        <button class="iconbtn" id="fsBtn" type="button" data-i18n-aria="fullscreen" aria-label="ملء الشاشة" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        <div class="lang" role="group" aria-label="Language / اللغة"></div>
+      </div>
+    </div>
+    <div class="menu-main">
+      <div class="avatar-box">
+        <canvas id="avMenu" width="320" height="300" aria-hidden="true"></canvas>
+        <p class="ai-say" id="botTip" aria-live="polite"><span class="ai-tag" data-i18n="n_nabeeh">نبيه</span><span class="ai-txt" id="botTipTxt"></span></p>
+      </div>
+      <div class="menu-text">
+        <p class="kicker" data-i18n="kicker">محطة فلك تناديك!</p>
+        <h1 data-i18n="title">عبود إلى القمر!</h1>
+        <p class="story" data-i18n="story"></p>
+        <div class="strip-wrap">
+          <p class="label" data-i18n="m_journeys">الرحلات</p>
+          <div class="jstrip" id="jStrip" role="group" data-i18n-aria="m_journeys"></div>
+        </div>
+        <div class="launch-row">
+          <div class="legs" id="legRow" role="group" data-i18n-aria="m_legs"></div>
+          <button class="btn launch" id="launchBtn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2M14.5 4.5C17 2 21 3 21 3s1 4-1.5 6.5L13 16l-5-5zM8 11l-3 .5L3 14l4 1M13 16l-.5 3L10 21l-1-4"/></svg><span data-i18n="b_launch">انطلق!</span></button>
+        </div>
+        <div class="menu-grid">
+          <button class="tile" type="button" data-sheet="hangar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L3.6 17.1a2 2 0 0 0 2.8 2.8l5.7-5.7a4 4 0 0 0 5.1-5.4l-2.6 2.6-2.4-.5-.5-2.4z"/></svg><span data-i18n="b_hangar">الورشة</span></button><button class="tile" type="button" data-sheet="suits"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11" r="8"/><path d="M7.5 11.5a4.5 3.6 0 0 1 9 0v.5h-9zM8 19.5V21h8v-1.5"/></svg><span data-i18n="b_suits">البدلات</span></button><button class="tile" type="button" data-sheet="missions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg><span data-i18n="b_missions">المهام</span><em class="dot" id="dotMissions" hidden></em></button><button class="tile" type="button" data-sheet="badges"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="14" r="6"/><path d="M8 3l3 5M16 3l-3 5M10.5 14l1 1 2-2.5"/></svg><span data-i18n="b_badges">الأوسمة</span></button><button class="tile" type="button" data-sheet="help"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.2v.1"/></svg><span data-i18n="b_help">كيف ألعب</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ sheets (hangar / suits / missions / badges / help) ============ -->
+<div class="overlay" id="sheet" hidden>
+  <div class="panel sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-top"><h2 id="sheetTitle"></h2><div class="coinpill"><i class="coin" aria-hidden="true"></i><span class="coinVal" dir="ltr">0</span></div><button class="ghost" id="sheetClose" type="button" data-i18n="b_close">إغلاق</button></div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+</div>
+
+<!-- ============ daily login gift ============ -->
+<div class="overlay" id="loginPop" hidden>
+  <div class="panel pick">
+    <p class="pick-title" data-i18n="lg_title">هدية اليوم</p>
+    <div class="login-days" id="loginDays"></div>
+    <button class="btn" id="loginClaim" type="button"></button>
+  </div>
+</div>
+
+<!-- ============ pause ============ -->
+<div class="overlay" id="pause" hidden>
+  <div class="panel pausecard" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
+        <h2 id="pauseTitle" data-i18n="pa_title">إيقاف مؤقت</h2>
+    <button class="btn" id="resumeBtn" type="button" data-i18n="b_resume">كمّل</button>
+    <div class="pause-row">
+      <button class="btn alt" id="restartBtn" type="button" data-i18n="b_replay">من جديد</button>
+      <button class="btn cream" id="pauseQuit" type="button" data-i18n="b_station">للمحطة</button>
+    </div>
+    <button class="ghost" id="pauseMute" type="button" aria-pressed="false"></button>
+    <p class="hint" data-i18n="pa_hint">اضغط «كمّل» أو P عشان ترجع للطيران</p>
+  </div>
+</div>
+
+<!-- ============ results ============ -->
+<div class="overlay" id="over" hidden>
+  <div class="panel over" id="overPanel">
+    <div class="panel-top"><p class="ai-say kick" id="overBot"><span class="ai-tag" data-i18n="n_nabeeh">نبيه</span><span class="ai-txt" id="overBotTxt"></span></p><div class="pills"><div class="coinpill"><i class="coin" aria-hidden="true"></i><span class="coinVal" dir="ltr">0</span></div><div class="lang" role="group" aria-label="Language / اللغة"></div></div></div>
+    <div class="menu-main">
+      <div class="avatar-box" id="overArt">
+        <canvas id="avOver" width="320" height="300" aria-hidden="true"></canvas>
+        <p class="postcard-fact" id="overFact" hidden></p>
+      </div>
+      <div class="menu-text">
+        <h2 id="overTitle"></h2>
+        <p class="over-msg" id="overMsg"></p>
+        <div class="score">
+          <div><b id="sScore" dir="ltr">0</b><span data-i18n="r_score">النقاط</span></div>
+          <div><b id="sKills" dir="ltr">0</b><span data-i18n="r_kills">حطّمت</span></div>
+          <div><b id="sBest" dir="ltr">0</b><span id="sBestLbl" data-i18n="r_best">الأفضل</span></div>
+        </div>
+        <div class="swap" id="swap">
+          <div class="swap-row">
+            <p class="label" data-i18n="r_total">الدراهم</p>
+            <div class="sw-box gold"><i class="coin" id="swCoinIc" aria-hidden="true"></i><b id="swCoins" dir="ltr">0</b></div>
+          </div>
+          <div class="swap-parts"><span id="swPartR"></span><span id="swPartC"></span><span id="swPartB"></span></div>
+        </div>
+        <p class="unlock-line" id="overUnlock" hidden></p>
+        <div class="mission-strip" id="overMissions"></div>
+        <div class="badge-strip" id="overBadges"></div>
+        <div class="over-actions" id="overActions">
+          <button class="btn" id="nextBtn" type="button"></button>
+          <button class="btn alt" id="retryBtn" type="button" data-i18n="b_retry">حاول مرة ثانية</button>
+          <button class="btn cream" id="quitBtn" type="button" data-i18n="b_station">للمحطة</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ first-run language picker ============ -->
+<div class="overlay" id="langPick" hidden>
+  <div class="panel pick">
+    <p class="pick-title" data-i18n="pickTitle">اختر اللغة</p>
+    <div class="pick-row">
+      <button type="button" class="pick-btn" data-pick="ar"><span class="flag-big" id="flagAr"></span><b lang="ar">العربية</b></button>
+      <button type="button" class="pick-btn" data-pick="en"><span class="flag-big" id="flagEn"></span><b lang="en">English</b></button>
+    </div>
+    <p class="hint" data-i18n="pickHint">تقدر تغيّرها بعدين من الأعلام.</p>
+  </div>
+</div>
+
+<!-- ============ rotate your phone ============ -->
+<div id="rotate" role="alertdialog" aria-modal="true" aria-labelledby="rotTxt" hidden>
+  <div class="rot-card">
+    <svg class="rot-phone" viewBox="0 0 64 64" aria-hidden="true"><g class="rot-g"><rect x="20" y="6" width="24" height="44" rx="5"/><path d="M29 44h6"/></g><path class="rot-arrow" d="M52 30a20 20 0 0 1-12 22M40 46v6h6"/></svg>
+    <p id="rotTxt" data-i18n="rotate">لفّ التلفون بالعرض!</p>
+    <p class="rot-hint" data-i18n="rotate_hint">السفينة تحتاج مكان تطير فيه</p>
+  </div>
+</div>
+
+<div id="note" role="status" aria-live="polite" hidden></div>
+<div id="toast" hidden><span data-i18n="update">في نسخة جديدة من اللعبة!</span><button type="button" id="toastBtn" data-i18n="updateBtn">حدّث</button></div>
+
+<!-- ============ loader ============ -->
+<div id="loader" role="status" aria-live="polite">
+  <div class="ld-card">
+    <canvas id="ldCv" width="480" height="300" aria-hidden="true"></canvas>
+    <p class="ld-title" data-i18n="title">عبود إلى القمر!</p>
+    <div class="ld-bar"><i id="ldFill"></i></div>
+    <p class="ld-text"><span id="ldMsg">جاري التحميل…</span> <b id="ldPct" dir="ltr">0%</b></p>
+    <p class="ld-tip" id="ldTip"></p>
+  </div>
+</div>
+<noscript><p style="position:fixed;inset:auto 0 40%;text-align:center;color:#fffbf2;font-size:18px">هذي اللعبة تحتاج JavaScript. This game needs JavaScript.</p></noscript>
+
+<script type="module" src="js/game.js"></script>
+</body>
+</html>
