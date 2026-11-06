@@ -25,16 +25,46 @@ There are no aliens: the only things in space are rocks, junk left behind in orb
 ## Journeys
 Eight journeys of three legs each: Moon → Mars → Venus → Asteroid Belt → Jupiter → Saturn → Uranus → Neptune.
 A leg lasts 60–80 seconds. Finishing a leg pays dirhams, and finishing a whole journey pays a big arrival bonus,
-gives you that planet's postcard and fact, and unlocks the next journey. Finished legs can be replayed for 40% of
-the reward. If the ship goes down you keep the coins you picked up, but not the leg reward.
-The Moon starts easy; each planet gets faster and busier.
+gives you that planet's postcard and fact, and unlocks the next journey. Finished legs can be replayed for 35% of
+the reward. If the ship goes down, or you quit, you keep the coins you picked up, but not the leg reward.
 
-## Hangar (Usta's upgrades)
-Blaster, twin guns (up to 5 bolts), hull armour (3 → 8), shield, super core, engine, magnet, and **Nabeeh AI**
-(from level 1 Nabeeh shoots rocks with his own laser, from level 3 he pulls in coins, and at level 5 he fires
-double). As you upgrade, the ship's look changes through 5 tiers. Suits: four free colours, plus a heat suit
-(+1 hull), a pilot suit (the beam starts 30% charged) and a gold suit (badge for reaching Saturn, coins ×1.2).
-There are also daily missions, a 7-day login gift, and bronze, silver and gold badges.
+- **Difficulty:** the Moon and Mars are relaxed, with lots of rocks to blast, extra coins and rare, slow meteors with long warnings.
+  From Venus on, each leg gets a little harder, up to Neptune.
+- **Ship level gates:** from Venus on, a journey needs a minimum ship level (total upgrade levels: 12, 15, 18, 21, 24, 27).
+  Usta tells you what to buy next. A journey you have already started stays open.
+- **Leg stars:** each leg has 3 stars: finish it, finish with a healthy hull, and reach the score target. New stars pay
+  dirhams, and star totals unlock costumes and badges.
+
+## Duels (rogue ship challenge)
+After you finish the Mars journey, the **Duels** tile opens. Ten rogue robot ships, built from space junk, challenge you
+to a 1v1 fight. Each has its own moves and attacks: aimed shots, fans, walls with a gap, lasers with a warning, homing
+mines, shields, armour plates and summoned drones. Each rival also has phases that change as its health drops. Win and Nabeeh reprograms the rival, and it becomes a
+friend of Falak Station (you will see it float round the station). Each rival gives 3 stars, a first-win prize and a costume
+or a ship paint. Rematches are free, and one rival a day pays ×2.
+
+## Mozah
+Abood's sister **Mozah** joins after you finish 10 missions (daily or ladder). Pick who flies at the top of the
+Costumes sheet. She has her own suit colours, a sports hijab inside her helmet, and the Arabic text speaks to her in the feminine.
+
+## Missions
+- **Mission ladder:** endless sets of three missions, like Run, Abood!. Each finished set raises the coin multiplier by ×0.1
+  (up to ×2.5) and pays a reward. A stuck mission can be skipped for dirhams.
+- **Daily missions:** three a day. The rewards grow as you reach further planets.
+- **Login gift:** 7 days, with a booster on day 7 and a welcome-back gift after a few days away.
+
+## Hangar (Usta's upgrades), boosters and costumes
+- **Upgrades:** blaster, twin guns (up to 5 bolts), hull armour, shield, super core, engine, magnet and **Nabeeh AI**.
+  From level 1 Nabeeh shoots with his own laser, from level 3 he pulls in coins, and at level 5 he fires double.
+  The top level of most upgrades adds a small extra trick. As you upgrade, the ship's look changes through 5 tiers.
+- **Boosters:** start shield, start beam, +1 hull and +0.5 coins, bought in the hangar and armed before a flight.
+- **Costumes:** free colours for each character, plus 12 costumes with a small effect and their own engine trail, bolt
+  colour or glow, for example the magnet suit (wider magnet), the comet suit (faster moves), the ice suit
+  (meteors warn earlier) and the champion suit (from beating the last rival). They come from dirhams, badges, rivals,
+  the mission ladder and leg stars.
+- **Ship paints:** 7 paint jobs, won from rivals and badges.
+- **Badges:** bronze, silver and gold tiers, plus one-off badges.
+
+The economy is sized for about two months of daily play (15–20 minutes a day) to win everything.
 
 ## Files
 ```

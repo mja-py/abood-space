@@ -1,15 +1,26 @@
 // Abood to the Moon · عبود إلى القمر — all DOM: loader, rotate overlay, language picker, station menu, sheets
-// (hangar / suits / missions / badges / help), HUD, pause card, results card, toasts. The main canvas belongs to game.js.
+// (hangar / costumes / missions / duels / badges / help), HUD (legs and duels), pause card, results card, toasts.
+// The main canvas belongs to game.js.
 //
-// ---- exports (see docs/SPEC.md "js/ui.js exports") ----
-//   initUI(h)        h = { onLaunch(jid, li), onPause(), onResume(), onQuit(), onRetry(), onNext(), onSuper(), onMute(), isMuted(), onFps() → 30|60, getFps(),
-//                          optional: onSelect(jid, li) (menu selection changed), sfx(name) ('tick' | 'chime' while coins count) }
+// ---- exports ----
+//   initUI(h)        h = { onLaunch(jid, li), onDuel(rid), onPause(), onResume(), onQuit(), onRetry(), onNext(), onSuper(),
+//                          onMute(), isMuted(), onFps() → 30|60, getFps(),
+//                          optional: onSelect(jid, li), onChar(ch) (player switched Abood/Mozah), onBuy(id),
+//                                    sfx(name) ('tick' | 'chime' while coins count) }
+//                    onDuel(rid): the UI only asks; game.js calls M.startDuel(rid) and starts the duel. A falsy return or
+//                    { ok:false, reason } shows a note.
 //   showMenu(), hideMenus()
-//   showHud(on, jid?, li?)   jid/li optional: ui.js already knows the leg from launch/retry/next
-//   hud(s)           s = { hp, maxHp, score, coins, prog 0..1, superF 0..1, shield 0..1 (1 = up), combo, rapid 0..1, jid?, li? }
-//                    writes the DOM only when a value changes
-//   showPause(on), showResult(r) (r = finishLeg/failLeg result + { win, jid, li, run }), note(text, ms?),
-//   loader(f, msgKeyOrText), hideLoader(), isBlocking() (portrait overlay up)
+//   showHud(on, jid?, li?, o?)   jid/li optional: ui.js already knows the leg from launch/retry/next.
+//                    showHud(true, null, 0, { duel: true, rid }) (or showHud(true, { duel: rid })) starts the duel HUD:
+//                    the rival bar replaces the trip bar.
+//   hud(s)           s = { hp, maxHp, score, coins, prog 0..1, superF 0..1, shield 0..1 (1 = up), combo, rapid 0..1, jid?, li?,
+//                          canPause?, rival?: { id, name?, hp, max, phase (index), ticks?: [at...], shield 0..1, stun?, intro 0..1? } }
+//                    writes only on change
+//   setCanPause(b)   hide the II button while pausing would do nothing (arrive / dead)
+//   superRect()      the super button's client rect (to keep warnings out from under it)
+//   showPause(on), showResult(r)
+//                    r = finishLeg/failLeg result + { win, jid, li, run }  or  finishDuel/failDuel result + { duel:true, rid, run }
+//   note(text, ms?), loader(f, msgKeyOrText), hideLoader(), isBlocking() (portrait overlay up)
 //   extras: renderMenu(), openSheet(kind), closeSheet(), syncCoins()
 import * as M from './meta.js?v=__BUILD__';
 import { T, TL, nf, lang, setLang, applyI18n } from './i18n.js?v=__BUILD__';
@@ -30,6 +41,8 @@ const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) 
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h)); return c; };
 const coinIc = () => el('i', 'coin');
 const safeCall = (fn, ...a) => { try { return typeof fn === 'function' ? fn(...a) : undefined; } catch (e) { console.error(e); } };
+// meta.js functions that are new in v2: call through MM so a missing one never breaks the menus
+const MM = (fn, ...a) => typeof M[fn] === 'function' ? safeCall(M[fn], ...a) : undefined;
 
 // art.js may still be loading its sprites (or be missing a function): never let a drawing break the UI
 const artErr = new Set();
@@ -37,9 +50,18 @@ function art(fn, ...args) {
   if (typeof A[fn] !== 'function') return false;
   try { A[fn](...args); return true; } catch (e) { if (!artErr.has(fn)) { artErr.add(fn); console.warn('art.' + fn, e); } return false; }
 }
+function artGet(fn, ...args) {
+  if (typeof A[fn] !== 'function') return null;
+  try { return A[fn](...args) || null; } catch (e) { if (!artErr.has(fn)) { artErr.add(fn); console.warn('art.' + fn, e); } return null; }
+}
 // a key that i18n.js may not have yet: fall back to built-in text
 function TT(key, ar, en, ...args) { const v = T(key, ...args); return v === key || v == null ? (lang() === 'ar' ? ar : en) : v; }
 const upText = (id, lv) => typeof I.upText === 'function' ? I.upText(id, lv) : T('up_' + id + '_v', M.upValue(id, lv));
+const keyIsFn = k => { try { const tb = I.STR && I.STR[lang()]; return !!tb && typeof tb[k] === 'function'; } catch (e) { return false; } };
+// signed numbers stay "+302" inside Arabic text (LRI … PDI isolate)
+const sgn = n => typeof I.sgn === 'function' ? I.sgn(n) : '⁦+' + nf(n) + '⁩';
+const fixSign = (s, n) => String(s).split('+' + nf(n)).join(sgn(n));
+const plusCoins = n => { const s = T('f_coins', n), k = nf(n); return s.includes(k) ? s.replace(k, sgn(n)) : sgn(n) + ' ' + s; };
 const FLAG = I.FLAG || {
   en: '<svg viewBox="0 0 60 30" aria-hidden="true"><path d="M0,0v30h60V0z" fill="#012169"/><path d="M0,0L60,30M60,0L0,30" stroke="#fff" stroke-width="6"/><path d="M30,0v30M0,15h60" stroke="#fff" stroke-width="10"/><path d="M30,0v30M0,15h60" stroke="#C8102E" stroke-width="6"/></svg>',
   ar: '<svg viewBox="0 0 12 6" aria-hidden="true"><rect width="12" height="2" fill="#00732f"/><rect y="2" width="12" height="2" fill="#fff"/><rect y="4" width="12" height="2" fill="#000"/><rect width="3" height="6" fill="#ff0000"/></svg>',
@@ -51,6 +73,33 @@ const pickedLang = () => {
 const jName = id => T('j_' + id);
 const pName = id => T('p_' + id);
 const legName = (jid, li) => T('leg_' + jid + '_' + li);
+const rvName = id => T('rv_' + id);
+
+// ---- characters and looks (Abood / Mozah) ----
+const CHAR = () => MM('char') || 'abood';
+const isGirl = () => CHAR() === 'mozah';
+const setGirl = b => safeCall(I.setGirl, !!b);
+const COSTUMES = () => M.COSTUMES || M.SUITS || [];
+const costumeDef = id => COSTUMES().find(c => c.id === id) || null;
+const idOf = v => (v && typeof v === 'object') ? v.id : v;
+function costumeOf(ch = CHAR()) {
+  const c = idOf(MM('costume', ch)) || (ch === CHAR() ? idOf(MM('suit')) : null);
+  return c || (ch === 'mozah' ? 'lilac' : 'white');
+}
+// the astronaut (feet at x, y), in either character's style
+function astro(c, x, y, s, o = {}) {
+  o = Object.assign({ t: 0, char: CHAR(), pose: 'stand' }, o);
+  if (!o.costume) o.costume = costumeOf(o.char);
+  o.suit = o.costume; // v1 art name
+  return art('drawAstronaut', c, x, y, s, o) || art('drawAbood', c, x, y, s, o);
+}
+function shipLook() {
+  const st = MM('stats') || {};
+  const costume = idOf(st.costume) || idOf(st.suit) || costumeOf();
+  const fx = st.fx || (costumeDef(costume) || {}).fx || null;
+  return { char: st.char || CHAR(), costume, suit: costume, skin: idOf(st.skin) || idOf(MM('skin')) || 'falak', aura: fx ? fx.aura || null : null,
+    tier: st.tier != null ? st.tier : (MM('tier') || 0), guns: st.guns || 1, shieldCd: st.shieldCd || 0 };
+}
 
 let H = {};
 const hook = (name, ...a) => { try { return typeof H[name] === 'function' ? H[name](...a) : undefined; } catch (e) { console.error('hook ' + name, e); } };
@@ -71,8 +120,11 @@ function animTick(now) {
   animRaf = 0; if (!anims.size) return;
   if (now - animLast >= 1000 / 30 - 3) {
     animLast = now; const t = now / 1000;
+    const sheetUp = !$('sheet').hidden, rot = blocking;
     for (const a of anims) {
       if (!a.cnv.isConnected) { anims.delete(a); continue; }
+      if (a.group === 'menu' && (sheetUp || rot || !$('loginPop').hidden)) continue; // hidden under a sheet / the rotate card
+      if (rot && a.group !== 'loader') continue;
       if (a.cnv.offsetParent === null && a.group !== 'loader') continue; // hidden
       try { a.draw(t); } catch (e) { anims.delete(a); console.warn(e); }
     }
@@ -102,7 +154,11 @@ function planet(c, id, x, y, r, t) {
   c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
   if (id === 'saturn') { c.strokeStyle = '#f6e6b8'; c.lineWidth = r * 0.12; c.beginPath(); c.ellipse(x, y, r * 1.7, r * 0.45, -0.3, 0, TAU); c.stroke(); }
 }
-// Abood + Nabeeh, scaled to fit a box (k = canvas px per logical unit). drawAbood's (x, y) is his feet.
+function astroFallback(c, x, y, col = '#f4f6fb') {
+  c.fillStyle = col; c.strokeStyle = INK; c.lineWidth = 4; rr(c, x - 34, y - 156, 68, 150, 30); c.fill(); c.stroke();
+  c.fillStyle = '#bfeaff'; c.beginPath(); c.arc(x, y - 156, 42, 0, TAU); c.fill(); c.stroke();
+}
+// the player + Nabeeh, scaled to fit a box (k = canvas px per logical unit). The astronaut's (x, y) is the feet.
 function duo(c, w, h, t, o = {}) {
   const k = h / 300;
   c.save(); c.scale(k, k);
@@ -111,10 +167,7 @@ function duo(c, w, h, t, o = {}) {
   const g = c.createRadialGradient(W * 0.42, 268, 4, W * 0.42, 268, 120); g.addColorStop(0, 'rgba(120,220,255,.28)'); g.addColorStop(1, 'rgba(120,220,255,0)');
   c.fillStyle = g; c.fillRect(0, 200, W, 100);
   const ab = o.abood || {};
-  if (!art('drawAbood', c, W * 0.4, 276 + (ab.pose === 'float' ? bob - 10 : 0), ab.s || 2.75, Object.assign({ t, suit: M.suit().id, pose: 'wave' }, ab))) {
-    c.fillStyle = '#f4f6fb'; c.strokeStyle = INK; c.lineWidth = 4; rr(c, W * 0.4 - 34, 120, 68, 150, 30); c.fill(); c.stroke();
-    c.fillStyle = '#bfeaff'; c.beginPath(); c.arc(W * 0.4, 120, 42, 0, TAU); c.fill(); c.stroke();
-  }
+  if (!astro(c, W * 0.4, 276 + (ab.pose === 'float' ? bob - 10 : 0), ab.s || 2.75, Object.assign({ t, pose: 'wave' }, ab))) astroFallback(c, W * 0.4, 276);
   const nb = o.nabeeh || {};
   if (!art('drawNabeeh', c, W * 0.8, 112 + bob, nb.s || 1.9, Object.assign({ t, mood: 'happy', talk: false }, nb))) {
     c.fillStyle = '#e9eef6'; c.strokeStyle = INK; c.lineWidth = 4; c.beginPath(); c.arc(W * 0.8, 120 + bob, 34, 0, TAU); c.fill(); c.stroke();
@@ -128,6 +181,75 @@ function drawDuoCanvas(cnv, t, o) {
   stars(c, w, h * 0.75, t, 34, 0.8);
   if (o && o.planet) planet(c, o.planet, w * 0.12, h * 0.16, h * 0.07, t);
   duo(c, w, h, t, o);
+}
+// a rival ship (faces left) fitted in a box of side `box` centred at (x, y)
+function rivalPic(c, id, x, y, box, o = {}) {
+  const R = rivalDef(id), r = (typeof A.rivalRadius === 'function' && safeCall(A.rivalRadius, id)) || (R && R.r) || 34, k = box / (2.5 * r);
+  c.save(); c.translate(x, y);
+  const ok = art('drawRival', c, id, 0, 0, Object.assign({ t: 0, mood: 'angry', phase: 0, s: k }, o));
+  c.scale(k, k);
+  if (!ok) {
+    c.fillStyle = '#8a8f9c'; c.strokeStyle = INK; c.lineWidth = 3; c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fill(); c.stroke();
+    c.fillStyle = o.mood === 'fixed' ? '#4aa8ff' : '#ff3b3b'; c.beginPath(); c.arc(-r * 0.3, -r * 0.1, r * 0.28, 0, TAU); c.fill(); c.stroke();
+  }
+  c.restore();
+}
+const rivalDef = id => MM('rival', id) || (M.RIVALS || []).find(r => r.id === id) || null;
+// booster icons: the matching pickup from art.js (fallback: a plain glyph)
+const BICON = { shield: 'shield', super: 'cell', hull: 'repair', coins: 'coin' };
+const BCOL = { shield: '#2fd4e6', super: '#ffd45a', hull: '#ff6b6b', coins: '#e9b330' };
+function boostIcon(c, id, size, t = 0.6, inPlace = false) {
+  if (!inPlace) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, size, size); }
+  c.save(); c.scale(size / 48, size / 48);
+  if (!art('drawBoosterIcon', c, id, 24, 24, 1.4) && !art('drawPickup', c, BICON[id] || 'cell', 24, 24, t)) {
+    c.fillStyle = BCOL[id] || '#ccc'; c.strokeStyle = INK; c.lineWidth = 2.5; c.beginPath(); c.arc(24, 24, 14, 0, TAU); c.fill(); c.stroke();
+  }
+  c.restore();
+}
+// costume card picture: the astronaut, the aura glow behind and the trail colours as a jet puff
+function costumePic(c, id, ch, size, t = 0.4) {
+  const C = costumeDef(id), fx = C && C.fx;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, size, size);
+  c.save(); c.scale(size / 200, size / 200);
+  if (fx && fx.aura && fx.aura.col) {
+    const g = c.createRadialGradient(100, 104, 8, 100, 104, 92);
+    g.addColorStop(0, hexA(fx.aura.col, 0)); g.addColorStop(0.55, hexA(fx.aura.col, 0.42)); g.addColorStop(1, hexA(fx.aura.col, 0));
+    c.fillStyle = g; c.fillRect(0, 0, 200, 200);
+  }
+  if (fx && Array.isArray(fx.trail) && C && (C.kind === 'perk' || C.perk)) { // the jet puff in the trail colours, with the costume's particle
+    const tr = fx.trail, long = fx.particle === 'comet', n = long ? 9 : 6;
+    for (let i = 0; i < n; i++) {
+      const f = i / n, x = 64 - i * (long ? 7 : 8), y = 150 + i * 6 + Math.sin(i * 1.7) * 3, r = 13 * (1 - f) + 3, col = tr[i % tr.length] || '#ffb04a';
+      c.globalAlpha = 0.9 * (1 - f * 0.8);
+      const sp = fx.particle && fx.particle !== 'flame' ? artGet('fxSprite', fx.particle, col) : null, img = sp && (sp.c || sp);
+      if (img && img.width) { try { c.globalCompositeOperation = 'lighter'; c.drawImage(img, x - r * 1.6, y - r * 1.6, r * 3.2, r * 3.2); c.globalCompositeOperation = 'source-over'; continue; } catch (e) { c.globalCompositeOperation = 'source-over'; } }
+      c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+    }
+    c.globalAlpha = 1;
+  }
+  if (!astro(c, 104, 192, 2.45, { t, char: ch, costume: id, pose: 'stand' })) astroFallback(c, 104, 190, (C && C.col) || '#f4f6fb');
+  c.restore();
+}
+function hexA(hex, a) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex)); if (!m) return 'rgba(255,255,255,' + a + ')';
+  const n = parseInt(m[1], 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+const PICS = new Map(); // baked card pictures (rival cards, ship paints)
+function cardPic(kind, id, w, h, locked, mood = 'angry') {
+  const key = kind + ':' + id + ':' + w + 'x' + h + (locked ? ':l' : '') + ':' + mood + (kind === 'skin' ? ':' + CHAR() + ':' + costumeOf() : '');
+  if (PICS.has(key)) return PICS.get(key);
+  const cnv = kind === 'rival' ? artGet('rivalCard', id, w, h, !!locked, mood) : artGet('skinCard', id, w, h, { char: CHAR(), costume: costumeOf() });
+  if (cnv) PICS.set(key, cnv);
+  return cnv;
+}
+function drawCardPic(cnv, kind, id, locked, mood) {
+  const c = cnv.getContext('2d'), w = cnv.width, h = cnv.height; c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, w, h);
+  const src = cardPic(kind, id, Math.round(w / 2), Math.round(h / 2), locked, mood);
+  if (src) { try { c.drawImage(src, 0, 0, w, h); return; } catch (e) {} }
+  // fallback until art.js has the card
+  c.fillStyle = '#160f34'; c.fillRect(0, 0, w, h); stars(c, w, h, 0, 18, 0.6);
+  if (kind === 'rival') { rivalPic(c, id, w * 0.55, h * 0.5, h * 0.82, { mood: mood || 'angry' }); if (locked) { c.fillStyle = 'rgba(20,14,40,.7)'; c.fillRect(0, 0, w, h); } }
+  else { const L = shipLook(); c.save(); c.translate(w * 0.5, h * 0.52); c.scale(w / 110, w / 110); art('drawShip', c, 0, 0, Object.assign({}, L, { t: 0.5, tier: 2, guns: 1, tilt: 0, thrust: 0.6, skin: id })); c.restore(); }
 }
 
 // hangar upgrade glyphs (small, drawn here: the art module has no upgrade icons)
@@ -174,9 +296,10 @@ function medal(c, id, tier, size) {
   c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1.2; c.beginPath(); c.arc(20, 25, 10, 0, TAU); c.stroke();
   c.save(); c.translate(20, 25); c.fillStyle = on ? '#fffbf2' : '#efeae0'; c.strokeStyle = INK; c.lineWidth = 1.1;
   const star = (r) => { c.beginPath(); for (let i = 0; i < 10; i++) { const a = i / 10 * TAU - Math.PI / 2, q = i % 2 ? r * 0.45 : r; c.lineTo(Math.cos(a) * q, Math.sin(a) * q); } c.closePath(); c.fill(); c.stroke(); };
+  const txt = (s, px = 9) => { c.font = '800 ' + px + 'px ' + FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(s, 0, 0.5); };
   if (id === 'rocks') { c.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * TAU, q = 6 + (i % 3) * 1.2; c.lineTo(Math.cos(a) * q, Math.sin(a) * q); } c.closePath(); c.fill(); c.stroke(); }
   else if (id === 'meteors') { c.beginPath(); c.moveTo(-7, 6); c.lineTo(3, -4); c.lineTo(1, 1); c.lineTo(7, -6); c.lineTo(-3, 6); c.lineTo(-1, 1); c.closePath(); c.fill(); c.stroke(); }
-  else if (id === 'coins') { c.font = '800 9px ' + FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(lang() === 'ar' ? 'د.إ' : 'AED', 0, 0.5); }
+  else if (id === 'coins') txt(lang() === 'ar' ? 'د.إ' : 'AED');
   else if (id === 'supers' || id === 'tour') star(7.5);
   else if (id === 'legs' || id === 'first') { c.fillRect(-5, -7, 2, 14); c.beginPath(); c.moveTo(-3, -7); c.lineTo(7, -4); c.lineTo(-3, -1); c.closePath(); c.fill(); c.stroke(); }
   else if (id === 'planets' || id === 'saturn') { c.beginPath(); c.arc(0, 0, 5, 0, TAU); c.fill(); c.stroke(); c.beginPath(); c.ellipse(0, 0, 9, 3, -0.4, 0, TAU); c.stroke(); }
@@ -184,18 +307,34 @@ function medal(c, id, tier, size) {
   else if (id === 'hangar') { c.lineWidth = 3; c.strokeStyle = on ? '#fffbf2' : '#efeae0'; c.beginPath(); c.moveTo(-5, 5); c.lineTo(3, -3); c.stroke(); c.beginPath(); c.arc(4, -4, 3.5, 0, TAU); c.stroke(); }
   else if (id === 'moon') { c.beginPath(); c.arc(0, 0, 7, 0.6, TAU - 0.6); c.quadraticCurveTo(-1, 0, Math.cos(0.6) * 7, Math.sin(0.6) * 7); c.fill(); c.stroke(); }
   else if (id === 'mars') { c.fillStyle = on ? '#e0754a' : '#ddd'; c.beginPath(); c.arc(0, 0, 6.5, 0, TAU); c.fill(); c.stroke(); }
+  else if (id === 'crystals') { c.fillStyle = on ? '#b9a6ff' : '#e6e1f2'; c.beginPath(); c.moveTo(0, -8); c.lineTo(6, -1); c.lineTo(0, 8); c.lineTo(-6, -1); c.closePath(); c.fill(); c.stroke(); c.beginPath(); c.moveTo(-6, -1); c.lineTo(6, -1); c.stroke(); }
+  else if (id === 'chains') { c.beginPath(); c.arc(-3, 0, 4, 0, TAU); c.stroke(); c.beginPath(); c.arc(3, 0, 4, 0, TAU); c.stroke(); }
+  else if (id === 'duels' || id === 'duel1' || id === 'champion') { c.lineWidth = 2.4; c.strokeStyle = on ? '#fffbf2' : '#efeae0'; c.beginPath(); c.moveTo(-6, -6); c.lineTo(6, 6); c.moveTo(6, -6); c.lineTo(-6, 6); c.stroke(); if (id === 'champion') { c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(0, 0, 2.5, 0, TAU); c.fill(); } }
+  else if (id === 'ladder') { c.fillRect(-5, -7, 2, 14); c.fillRect(3, -7, 2, 14); for (let k = -5; k <= 5; k += 4) c.fillRect(-4, k, 8, 1.6); }
+  else if (id === 'loyal') txt('7');
+  else if (id === 'mozah') { c.beginPath(); c.arc(0, -1, 6, Math.PI, 0); c.lineTo(6, 6); c.quadraticCurveTo(0, 9, -6, 6); c.closePath(); c.fill(); c.stroke(); }
+  else if (/^stars\d+/.test(id)) { star(7); c.fillStyle = INK; txt(id.slice(5), 6); }
   else star(6.5);
   c.restore(); c.setTransform(1, 0, 0, 1, 0, 0);
 }
+// three little stars (filled = earned); cls picks the size
+function starRow(arr, cls = 'stars3', isNew = []) {
+  const s = el('span', cls); s.setAttribute('aria-hidden', 'true');
+  for (let k = 0; k < 3; k++) { const i = el('i', 'star' + (arr && arr[k] ? ' on' : '') + (isNew.includes(k) ? ' new' : '')); if (isNew.includes(k)) i.style.animationDelay = (0.5 + isNew.indexOf(k) * 0.35) + 's'; s.appendChild(i); }
+  return s;
+}
+const starCount = arr => (arr || []).filter(Boolean).length;
+function progBar(f) { const pg = el('div', 'prog'), fi = el('i'); fi.style.width = Math.round(clamp(f, 0, 1) * 100) + '%'; pg.appendChild(fi); return pg; }
 
 // =============================================================================================
 // state
 let selJ = null, selL = 0;
 let cur = { jid: null, li: 0 }, lastRes = null;
-let sheetKind = null, ustaLine = '';
+let sheetKind = null, sheetFrom = null, ustaLine = '', hangTab = 'up', pendingSheet = null;
 let blocking = false, hudOn = false, updateReady = false, loginShown = false;
 let tipTimer = 0;
 let kbd = false; // last input was a key: move focus into new cards (no focus rings for touch / mouse players)
+let duelOn = null, pendingDuel = null;
 
 function syncCoins(v) {
   const s = T('coins', v == null ? M.coins() : v);
@@ -221,6 +360,14 @@ function syncFps() {
 }
 function doFps(e) { const f = hook('onFps'); syncFps(); note(T('fps_note', f === 30 ? 30 : 60)); if (e && e.currentTarget) e.currentTarget.blur(); }
 function doMute(e) { hook('onMute'); syncMute(); if (e && e.currentTarget) e.currentTarget.blur(); }
+// theme pre-bake while the kid is in the menu (art keeps menu + current + next themes)
+let baked = null;
+function bakeSoon(theme) {
+  if (!theme || theme === baked || typeof A.bakeTheme !== 'function') return; baked = theme;
+  const run = () => art('bakeTheme', theme);
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 2000 }); else setTimeout(run, 300);
+}
+const themeOf = jid => { const J = jid && M.journey(jid); return J && J.theme && typeof J.theme === 'object' ? J.theme : null; }; // the journey's theme object
 
 // =============================================================================================
 // loader
@@ -242,7 +389,7 @@ function ldScene(t) {
   const bob = REDUCED ? 0 : Math.sin(t * 1.4) * 6;
   c.save(); c.translate(0, bob);
   const k = h / 300; c.save(); c.scale(k, k);
-  if (!art('drawAbood', c, 200, 262, 2.3, { t, suit: safeCall(M.suit)?.id || 'white', pose: 'float' })) { c.fillStyle = '#f4f6fb'; c.strokeStyle = INK; c.lineWidth = 4; rr(c, 170, 130, 60, 120, 26); c.fill(); c.stroke(); c.fillStyle = '#bfeaff'; c.beginPath(); c.arc(200, 128, 36, 0, TAU); c.fill(); c.stroke(); }
+  if (!astro(c, 200, 262, 2.3, { t, pose: 'float' })) astroFallback(c, 200, 262);
   c.restore(); c.restore();
   const b2 = REDUCED ? 0 : Math.sin(t * 1.9 + 1) * 7;
   c.save(); c.scale(k, k);
@@ -296,6 +443,7 @@ function thumb(id, locked) {
   THUMBS.set(key, cnv); return cnv;
 }
 const LOCK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+const WRENCH_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L3.6 17.1a2 2 0 0 0 2.8 2.8l5.7-5.7a4 4 0 0 0 5.1-5.4l-2.6 2.6-2.4-.5-.5-2.4z"/></svg>';
 function dragScroll(row) {
   if (row.dataset.drag) return; row.dataset.drag = 1; let x0 = 0, s0 = 0, down = false;
   row.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') return; down = true; row.moved = false; x0 = e.clientX; s0 = row.scrollLeft; });
@@ -303,26 +451,37 @@ function dragScroll(row) {
   addEventListener('pointerup', () => { down = false; setTimeout(() => { row.moved = false; }, 0); });
   row.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { row.scrollLeft += lang() === 'ar' ? -e.deltaY : e.deltaY; e.preventDefault(); } }, { passive: false });
 }
+// Usta's advice for a ship-level gate: "we need ship level 15, you have 13 · Usta recommends: Blaster"
+function gateText(need) {
+  const rec = MM('recommend');
+  return T('m_need', need.need, need.have) + (rec ? ' ' + T('up_rec') + ': ' + T('up_' + rec) : '');
+}
 export function renderMenu() {
   ensureSel(); syncCoins(); syncMute();
   const strip = $('jStrip'); if (!strip) return;
   const keepX = strip.scrollLeft, first = !strip.childElementCount; strip.innerHTML = ''; dragScroll(strip);
   M.JOURNEYS.forEach((j, i) => {
     const open = M.isUnlocked(j.id), done = M.legsDone(j.id), on = j.id === selJ;
-    const b = el('button', 'jcard' + (open ? '' : ' shut') + (on ? ' on' : '') + (done >= 3 ? ' done' : '')); b.type = 'button';
+    const prev = i > 0 ? M.JOURNEYS[i - 1] : null, prevDone = !prev || M.legsDone(prev.id) >= 3;
+    const need = !open && prevDone ? MM('journeyNeed', j.id) : null, gated = !!(need && !need.ok);
+    const b = el('button', 'jcard' + (open ? '' : ' shut') + (gated ? ' gated' : '') + (on ? ' on' : '') + (done >= 3 ? ' done' : '')); b.type = 'button';
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    const prev = i > 0 ? M.JOURNEYS[i - 1] : null;
-    b.setAttribute('aria-label', jName(j.id) + ' · ' + (open ? T('m_legsDone', done, 3) : T('m_lockedHint', pName(prev ? prev.planet : 'moon'))));
+    const lockTxt = gated ? gateText(need) : T('m_lockedHint', pName(prev ? prev.planet : 'moon'));
+    const nStars = open ? MM('starsOf', j.id) : null;
+    b.setAttribute('aria-label', jName(j.id) + ' · ' + (open ? T('m_legsDone', done, 3) + (nStars != null ? ' · ' + T('a_stars', nStars) : '') : lockTxt));
     const pic = mk(224, 140); pic.setAttribute('aria-hidden', 'true'); b.appendChild(pic);
     const fill = () => { try { pic.getContext('2d').drawImage(thumb(j.planet || j.id, !open), 0, 0, 224, 140); } catch (e) {} };
     if (THUMBS.has((j.planet || j.id) + (open ? ':o' : ':l'))) fill(); else setTimeout(fill, 30 + i * 40);
-    if (!open) { const lk = el('span', 'lock'); lk.innerHTML = LOCK_SVG; b.appendChild(lk); }
+    if (gated) { const g = el('span', 'gate'); g.innerHTML = WRENCH_SVG; g.appendChild(el('span', null, T('m_needShort', need.need))); b.appendChild(g); }
+    else if (!open) { const lk = el('span', 'lock'); lk.innerHTML = LOCK_SVG; b.appendChild(lk); }
     if (done >= 3) b.appendChild(el('span', 'ok', '✓'));
     b.appendChild(el('b', null, jName(j.id)));
-    const lp = el('small', 'lp'); lp.setAttribute('aria-hidden', 'true'); for (let k = 0; k < 3; k++) lp.appendChild(el('i', k < done ? 'on' : '')); b.appendChild(lp);
+    const lp = el('small', 'lp'); lp.setAttribute('aria-hidden', 'true'); for (let k = 0; k < 3; k++) lp.appendChild(el('i', k < done ? 'on' : ''));
+    if (nStars) { const st = el('em', 'jst'); st.appendChild(el('i', 'star on')); st.append(nf(nStars)); lp.appendChild(st); }
+    b.appendChild(lp);
     b.onclick = () => {
       if (strip.moved) return;
-      if (!open) { note(T('m_lockedHint', pName(prev ? prev.planet : 'moon'))); return; }
+      if (!open) { note(lockTxt, gated ? 4200 : 1800); return; }
       if (selJ !== j.id) { selJ = j.id; selL = defaultLeg(j.id); hook('onSelect', selJ, selL); }
       renderMenu();
     };
@@ -334,22 +493,62 @@ export function renderMenu() {
     if (cr.left < sr2.left + 8 || cr.right > sr2.right - 8) strip.scrollLeft += lang() === 'ar' ? cr.right - sr2.right + 8 : cr.left - sr2.left - 8;
   });
   else strip.scrollLeft = keepX;
-  // legs of the selected journey
+  // legs of the selected journey (with their three stars)
   const row = $('legRow'); row.innerHTML = '';
   const done = M.legsDone(selJ);
   for (let li = 0; li < 3; li++) {
-    const ok = M.canPlay(selJ, li), d = li < done, on = li === selL;
+    const ok = M.canPlay(selJ, li), d = li < done, on = li === selL, st = MM('legStars', selJ, li) || [false, false, false];
     const b = el('button', 'leg' + (d ? ' done' : '') + (on ? ' on' : '')); b.type = 'button'; b.disabled = !ok;
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
     const nm = legName(selJ, li), rw = M.legReward(selJ, li);
-    b.title = T('m_legOf', li, 3) + ' · ' + nm + (ok ? ' · ' + (d ? T('m_replay') : T('m_reward', rw)) : ' · ' + T('m_locked'));
+    b.title = T('m_legOf', li, 3) + ' · ' + nm + (ok ? ' · ' + (d ? T('m_replay') : T('m_reward', rw)) + ' · ' + T('a_stars', starCount(st)) : ' · ' + T('m_locked'));
     b.setAttribute('aria-label', b.title);
-    const num = el('i', null, d ? '✓' : nf(li + 1)); b.appendChild(num); b.appendChild(el('span', null, nm));
+    const num = el('i', null, d ? '✓' : nf(li + 1)); b.appendChild(num);
+    const tx = el('span', 'ltx'); tx.appendChild(el('span', 'lname', nm)); if (ok) tx.appendChild(starRow(st, 'lst')); b.appendChild(tx);
     b.onclick = () => { if (!ok) return; selL = li; hook('onSelect', selJ, selL); renderMenu(); };
     row.appendChild(b);
   }
   $('launchBtn').setAttribute('aria-label', T('b_launch') + ' · ' + jName(selJ) + ' · ' + T('m_legOf', selL, 3));
+  boostRow($('boostRow'));
   $('dotMissions').hidden = !(M.missionsReady() > 0 || M.loginReady());
+  // duels tile: locked until Mars is done
+  const dOpen = !!MM('duelsOpen'), dt = document.querySelector('[data-sheet="duels"]');
+  if (dt) {
+    dt.classList.toggle('shut', !dOpen); dt.setAttribute('aria-disabled', dOpen ? 'false' : 'true');
+    dt.setAttribute('aria-label', T('b_duels') + (dOpen ? '' : ' · ' + T('du_lock')));
+    const dd = $('dotDuels'); if (dd) dd.hidden = !duelDot();
+  }
+  bakeSoon(themeOf(selJ));
+}
+// today's duel bonus is still there, or a rival is waiting
+function duelDot() {
+  if (typeof M.duelDot === 'function') return !!MM('duelDot');
+  if (!MM('duelsOpen')) return false;
+  const L = MM('rivalList') || [];
+  return L.some(r => r.open && !r.beaten) || dayFree();
+}
+function dayFree() { if (typeof M.duelDayFree === 'function') return !!MM('duelDayFree'); const D = MM('data'); return !!D && D.duelDay !== MM('today'); }
+// booster chips (over Launch, and in the duel sheet): tap to arm one for the next run
+function boostRow(box, showNone) {
+  if (!box) return;
+  box.innerHTML = '';
+  const stock = MM('boosters') || {}, armed = MM('armed') || [];
+  const ids = (M.BOOSTERS || []).map(b => b.id).filter(id => (stock[id] || 0) > 0);
+  box.hidden = !ids.length && !showNone;
+  if (!ids.length) { if (showNone) box.appendChild(el('span', 'hint', T('bo_none'))); return; }
+  for (const id of ids) {
+    const on = armed.includes(id);
+    const b = el('button', 'boost' + (on ? ' on' : '')); b.type = 'button'; b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.title = T('bo_' + id) + ' · ' + T('bo_have', stock[id]); b.setAttribute('aria-label', b.title + ' · ' + T('bo_arm'));
+    const cv = mk(48, 48); cv.setAttribute('aria-hidden', 'true'); boostIcon(cv.getContext('2d'), id, 48); b.appendChild(cv);
+    b.appendChild(el('small', null, nf(stock[id])));
+    b.onclick = () => {
+      const ok = MM('setArmed', id, !on);
+      if (ok === false) note(T('bo_none')); else { note((on ? '' : '✓ ') + T('bo_' + id) + (on ? ' ✕' : '')); hook('sfx', 'tick'); }
+      document.querySelectorAll('.boosts').forEach(r => boostRow(r, r.dataset.none === '1'));
+    };
+    box.appendChild(b);
+  }
 }
 function startTips() {
   stopTips();
@@ -369,7 +568,8 @@ export function showMenu() {
   $('menu').hidden = false;
   renderMenu(); startTips();
   if (!avMenuAnim || !anims.has(avMenuAnim)) avMenuAnim = addAnim($('avMenu'), t => drawDuoCanvas($('avMenu'), t, { planet: null, abood: { pose: 'wave' }, nabeeh: { mood: 'happy', talk: Math.sin(t * 2.2) > 0.4 } }), 'menu');
-  maybeToast(); maybeLogin();
+  maybeToast();
+  if (pendingSheet) { const k = pendingSheet; pendingSheet = null; openSheet(k); } else maybeLogin();
 }
 export function hideMenus() {
   for (const id of ['menu', 'sheet', 'langPick', 'loginPop', 'over', 'pause']) { const e = $(id); if (e) e.hidden = true; }
@@ -384,43 +584,79 @@ function loginDays(box) {
   for (let k = 1; k <= n; k++) {
     const d = el('div', (k < L.day || (k === L.day && !L.claimable)) ? 'done' : k === L.day ? 'today' : '');
     d.appendChild(el('span', null, T('lg_day', k)));
-    const b = el('b'); b.appendChild(coinIc()); b.append(nf(gifts[k - 1] || 0)); b.querySelector('.coin').style.cssText = 'width:13px;height:13px;border-width:1.5px'; d.appendChild(b);
+    const b = el('b'); b.appendChild(coinIc()); b.append(nf(gifts[k - 1] || 0)); d.appendChild(b);
+    if (k === n && (L.booster || n >= 7)) { const cv = mk(32, 32); cv.className = 'lg-bo'; cv.setAttribute('aria-hidden', 'true'); boostIcon(cv.getContext('2d'), 'shield', 32); d.appendChild(cv); }
     box.appendChild(d);
   }
   return L;
+}
+function loginExtra(box, L) {
+  if (!box) return;
+  const bits = [];
+  if (L.welcome) bits.push(TL('bot_welcome') + ' ' + TT('lg_welcome', '', ''));
+  if (L.booster) bits.push(TT('lg_booster', '+ ' + T('bo_' + L.booster), '+ ' + T('bo_' + L.booster)));
+  box.hidden = !bits.length; box.textContent = '';
+  if (bits.length) { box.appendChild(el('span', 'ai-tag', T('n_nabeeh'))); box.appendChild(el('span', 'ai-txt', bits.join(' · '))); }
 }
 function maybeLogin() {
   if (loginShown || !M.loginReady()) return;
   loginShown = true;
   const L = loginDays($('loginDays'));
+  loginExtra($('loginBot'), L);
   const btn = $('loginClaim'); btn.textContent = T('lg_claim', L.gift);
-  btn.onclick = () => { const got = M.claimLogin(); $('loginPop').hidden = true; if (got) { note(T('f_coins', '+' + got)); hook('sfx', 'chime'); } renderMenu(); };
+  btn.onclick = () => { const got = M.claimLogin(); $('loginPop').hidden = true; if (got) { note(plusCoins(got)); hook('sfx', 'chime'); } renderMenu(); };
   $('loginPop').hidden = false;
+  if (kbd) try { btn.focus({ preventScroll: true }); } catch (e) {}
 }
 const SHEETS = {
-  hangar: ['hg_title', sheetHangar], suits: ['st_title', sheetSuits], missions: ['ms_title', sheetMissions], badges: ['bg_title', sheetBadges], help: ['help_title', sheetHelp],
+  hangar: ['hg_title', sheetHangar], costumes: ['cs_title', sheetCostumes], missions: ['ms_title', sheetMissions], duels: ['du_title', sheetDuels],
+  badges: ['bg_title', sheetBadges], help: ['help_title', sheetHelp],
 };
+const SHEET_ALIAS = { suits: 'costumes', wardrobe: 'costumes', shop: 'hangar' };
 export function openSheet(kind) {
+  kind = SHEET_ALIAS[kind] || kind;
   const S2 = SHEETS[kind]; if (!S2) return;
-  const body = $('sheetBody'), keep = kind === sheetKind ? body.scrollTop : 0;
+  if (kind === 'duels' && !MM('duelsOpen')) { note(T('du_lock'), 2600); return; }
+  const body = $('sheetBody'), same = kind === sheetKind, keep = same ? body.scrollTop : 0, wasOpen = !$('sheet').hidden;
+  if (!wasOpen) { sheetFrom = document.querySelector('[data-sheet="' + kind + '"]'); hideNote(); }
   dropAnims('sheet'); sheetKind = kind; body.innerHTML = ''; $('sheet').hidden = false; syncCoins();
   $('sheetTitle').textContent = T(S2[0]);
+  if (!wasOpen) hangTab = 'up';
   S2[1](body);
   body.scrollTop = keep;
+  if (!wasOpen && kbd) try { $('sheetClose').focus({ preventScroll: true }); } catch (e) {}
 }
-export function closeSheet() { $('sheet').hidden = true; sheetKind = null; dropAnims('sheet'); if (!$('menu').hidden) renderMenu(); const b = document.querySelector('[data-sheet]:focus'); if (b) b.blur(); }
+export function closeSheet() {
+  const k = sheetKind;
+  $('sheet').hidden = true; sheetKind = null; dropAnims('sheet');
+  if (!$('menu').hidden) renderMenu();
+  const back = sheetFrom || document.querySelector('[data-sheet="' + k + '"]'); sheetFrom = null;
+  if (kbd && back && back.isConnected) try { back.focus({ preventScroll: true }); } catch (e) {}
+  else { const ae = document.activeElement; if (ae && ae.blur && ae !== document.body) ae.blur(); }
+}
 function card(draw, name, sub, btn, cls) {
   const c = el('div', 'card' + (cls ? ' ' + cls : '')); const cnv = mk(192, 192); cnv.setAttribute('aria-hidden', 'true'); c.appendChild(cnv);
   if (draw) draw(cnv);
   c.appendChild(el('b', null, name)); if (sub) c.appendChild(el('small', null, sub));
-  if (btn) {
-    const b = el('button', btn.cls || ''); b.type = 'button'; b.disabled = !!btn.disabled;
-    if (btn.price != null) { b.appendChild(coinIc()); b.append(nf(btn.price)); b.setAttribute('aria-label', btn.text); } else b.textContent = btn.text;
-    if (btn.onClick) b.onclick = btn.onClick; c.appendChild(b);
-  }
+  if (btn) c.appendChild(cardBtn(btn));
   return c;
 }
-// ---- hangar (Usta) ----
+function cardBtn(btn) {
+  const b = el('button', btn.cls || ''); b.type = 'button'; b.disabled = !!btn.disabled;
+  if (btn.price != null) { b.appendChild(coinIc()); b.append(nf(btn.price)); b.setAttribute('aria-label', btn.text); } else b.textContent = btn.text;
+  if (btn.onClick) b.onclick = btn.onClick;
+  return b;
+}
+// a short line under a sheet's buttons: what happened
+function bought() { note(T('bought')); hook('sfx', 'chime'); }
+
+// ---- hangar (Usta): Upgrades / Boosters ----
+const TRICK = '✦';
+// the ✦ tricks (DESIGN §6): level -> trick id (name = tr_<id>)
+const TRICKS = { blaster: [[5, 'pierce']], hull: [[5, 'regen']], shield: [[4, 'shieldBlast']], engine: [[3, 'nearMiss']], magnet: [[3, 'pullPickups']], nabeeh: [[2, 'warn'], [4, 'intercept'], [5, 'double']] };
+const noTrick = s => String(s == null ? '' : s).split(' · ').filter(p => !p.trim().startsWith(TRICK)).join(' · ');
+const trickName = k => TT('tr_' + k, k, k);
+const trickLine = name => keyIsFn('up_trick') ? T('up_trick', name) : TRICK + ' ' + name;
 function sheetHangar(body) {
   const head = el('div', 'hangar-head');
   const ub = el('div', 'usta-box'), uc = mk(184, 184); uc.setAttribute('aria-hidden', 'true'); ub.appendChild(uc); head.appendChild(ub);
@@ -430,45 +666,63 @@ function sheetHangar(body) {
     if (!art('drawUsta', c, 50, 97, 0.9, t)) { c.fillStyle = '#e9b330'; c.strokeStyle = INK; c.lineWidth = 3; rr(c, 28, 24, 44, 66, 8); c.fill(); c.stroke(); c.fillStyle = '#2fd4e6'; c.beginPath(); c.arc(50, 44, 10, 0, TAU); c.fill(); c.stroke(); }
     c.restore();
   }, 'sheet');
-  if (!ustaLine) ustaLine = TL('usta_lines');
-  const say = el('p', 'say'); say.appendChild(el('b', null, T('n_usta') + ': ')); say.append(ustaLine); head.appendChild(say);
+  const rec = MM('recommend');
+  if (!ustaLine) { const tip = MM('ustaTip'); ustaLine = tip && Math.random() < 0.6 ? T('usta_tip', T('cs_' + tip)).replace(/^[^:]+:\s*/, '') : TL('usta_lines'); }
+  const say = el('p', 'say'); say.appendChild(el('b', null, T('n_usta') + ': ')); say.append(ustaLine);
+  if (rec && hangTab === 'up') { say.appendChild(el('br')); const r2 = el('span', 'say-rec'); r2.append(T('up_rec') + ': '); r2.appendChild(el('b', null, T('up_' + rec))); say.appendChild(r2); }
+  head.appendChild(say);
   const sv = el('div', 'ship-view'), sc = mk(352, 192); sc.setAttribute('aria-hidden', 'true'); sv.appendChild(sc);
-  sv.appendChild(el('small', null, T('hg_tier', M.tier()))); head.appendChild(sv);
-  const st = M.stats();
+  const lvN = MM('shipLevel') ?? MM('totalLevels') ?? 0;
+  sv.appendChild(el('small', null, TT('a_shipLv', 'مستوى السفينة ' + nf(lvN), 'Ship level ' + nf(lvN), lvN))); head.appendChild(sv);
+  const L = shipLook();
   addAnim(sc, t => {
     const c = sc.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 352, 192);
-    // streaking stars
     for (let i = 0; i < 26; i++) { const s = STARS[i], x = ((s.x * 352 - t * (40 + s.r * 60)) % 352 + 352) % 352; c.globalAlpha = 0.35 + s.r * 0.3; c.fillStyle = '#fff'; c.fillRect(x, s.y * 192, 2 + s.r * 5, 1.5); }
     c.globalAlpha = 1;
     const k = 2.0, bob = REDUCED ? 0 : Math.sin(t * 1.6) * 3;
     c.save(); c.scale(k, k);
-    if (!art('drawShip', c, 352 / k / 2 + 6, 192 / k / 2 + bob, { t, tier: st.tier, guns: st.guns, tilt: REDUCED ? 0 : Math.sin(t * 1.6) * 0.25, thrust: 0.8, suit: st.suit, hurt: 0, shield: st.shieldCd > 0 ? 0.35 : 0, beam: false })) {
+    if (!art('drawShip', c, 352 / k / 2 + 6, 192 / k / 2 + bob, Object.assign({}, L, { t, tilt: REDUCED ? 0 : Math.sin(t * 1.6) * 0.25, thrust: 0.8, hurt: 0, shield: L.shieldCd > 0 ? 0.35 : 0, beam: false }))) {
       c.fillStyle = '#f4f1ea'; c.strokeStyle = INK; c.lineWidth = 2; c.beginPath(); c.ellipse(88, 48 + bob, 34, 14, 0, 0, TAU); c.fill(); c.stroke();
     }
     c.restore();
   }, 'sheet');
   body.appendChild(head);
-  body.appendChild(el('p', 'note-line', T('shopNote')));
+  // tabs
+  const tabs = el('div', 'tabs'); tabs.setAttribute('role', 'tablist');
+  for (const [id, key] of [['up', 'hg_tabUp'], ['boost', 'hg_tabBoost']]) {
+    const b = el('button', 'tab' + (hangTab === id ? ' on' : ''), T(key)); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', hangTab === id ? 'true' : 'false');
+    if (id === 'boost') { const n = Object.values(MM('boosters') || {}).reduce((a, v) => a + (+v || 0), 0); if (n) b.appendChild(el('em', 'tab-n', nf(n))); }
+    b.onclick = () => { if (hangTab === id) return; hangTab = id; openSheet('hangar'); };
+    tabs.appendChild(b);
+  }
+  body.appendChild(tabs);
+  if (hangTab === 'boost') { hangarBoosters(body); return; }
   const ups = el('div', 'ups');
   for (const u of M.UPGRADES) {
-    const lv = M.level(u.id), max = u.max, price = M.nextPrice(u.id), can = M.canBuy(u.id), isMax = price == null;
-    const row = el('div', 'up' + (isMax ? ' max' : ''));
+    const lv = M.level(u.id), max = u.max, price = M.nextPrice(u.id), can = M.canBuy(u.id), isMax = price == null, isRec = u.id === rec;
+    const row = el('div', 'up' + (isMax ? ' max' : '') + (isRec ? ' rec' : ''));
     const ic = mk(88, 88); ic.setAttribute('aria-hidden', 'true'); row.appendChild(ic);
     if (u.id === 'nabeeh' || u.id === 'engine') addAnim(ic, t => upIcon(ic.getContext('2d'), u.id, 88, t), 'sheet'); else upIcon(ic.getContext('2d'), u.id, 88, 0);
     const nm = el('b', 'up-name'); nm.appendChild(el('span', null, T('up_' + u.id)));
     const pips = el('span', 'pips'); pips.setAttribute('role', 'img'); pips.setAttribute('aria-label', T('up_lv', lv, max));
-    for (let k = 0; k < max; k++) pips.appendChild(el('i', k < lv ? 'on' : '')); nm.appendChild(pips); row.appendChild(nm);
+    for (let k = 0; k < max; k++) pips.appendChild(el('i', k < lv ? 'on' : '')); nm.appendChild(pips);
+    if (isRec) nm.appendChild(el('em', 'rec-tag', T('up_rec')));
+    row.appendChild(nm);
     row.appendChild(el('small', 'up-d', T('up_' + u.id + '_d')));
     const eff = el('span', 'eff');
-    if (isMax) { eff.append(upText(u.id, lv)); }
-    else { const now = el('em', null, upText(u.id, lv)); eff.appendChild(now); eff.appendChild(el('b', null, T('arrow'))); eff.append(upText(u.id, lv + 1)); }
+    if (isMax) { eff.append(noTrick(upText(u.id, lv))); }
+    else { const now = el('em', null, noTrick(upText(u.id, lv))); eff.appendChild(now); eff.appendChild(el('b', null, T('arrow'))); eff.append(noTrick(upText(u.id, lv + 1))); }
     row.appendChild(eff);
+    // the ✦ trick: the next one to unlock, or the last one owned
+    const tr = TRICKS[u.id] || [], next = tr.find(o => o[0] > lv), got = tr.filter(o => o[0] <= lv).map(o => trickName(o[1]));
+    if (next) row.appendChild(el('small', 'trick', trickLine(trickName(next[1])) + ' · ' + T('up_lv', next[0], max)));
+    else if (got.length) row.appendChild(el('small', 'trick got', TRICK + ' ' + got.join(' · ') + ' ✓'));
     const b = el('button'); b.type = 'button';
     if (isMax) { b.textContent = T('up_max'); b.disabled = true; }
     else { b.appendChild(coinIc()); b.append(nf(price)); b.disabled = !can; b.setAttribute('aria-label', T('up_buy', price) + ' · ' + T('up_' + u.id)); }
     b.onclick = () => {
       const r = M.buyUpgrade(u.id) || {};
-      if (r.ok) { note(T('bought')); ustaLine = TL('usta_buy'); hook('sfx', 'chime'); hook('onBuy', u.id); }
+      if (r.ok) { bought(); ustaLine = TL('usta_buy'); hook('onBuy', u.id); }
       else if (r.reason === 'max') { ustaLine = TL('usta_max'); }
       else { note(T('notEnough')); ustaLine = TL('usta_poor'); }
       openSheet('hangar');
@@ -477,46 +731,166 @@ function sheetHangar(body) {
     ups.appendChild(row);
   }
   body.appendChild(ups);
+  body.appendChild(el('p', 'note-line', T('shopNote')));
 }
-// ---- suits ----
-function sheetSuits(body) {
-  body.appendChild(el('p', 'note-line', T('st_note')));
-  const g = el('div', 'cards'), wornId = M.suit().id;
-  for (const s of M.SUITS) {
-    const own = M.ownsSuit(s.id), worn = s.id === wornId, badgeLock = !!s.badge && !own;
-    const sub = s.perk ? T(s.perk) : T('free');
-    let btn;
-    if (worn) btn = { text: T('wearing'), cls: 'sec', disabled: true };
-    else if (own) btn = { text: T('wear'), cls: 'sec', onClick: () => { M.wearSuit(s.id); hook('sfx', 'chime'); openSheet('suits'); } };
-    else if (badgeLock) btn = { text: T('badgeOnly'), disabled: true };
-    else btn = { text: T('buy', s.price), price: s.price, disabled: M.coins() < s.price, onClick: () => { const r = M.buySuit(s.id) || {}; if (r.ok) { note(T('bought')); hook('sfx', 'chime'); } else note(T('notEnough')); openSheet('suits'); } };
-    const cl = [worn ? 'on' : '', s.perk ? 'perk' : '', badgeLock ? 'locked' : ''].filter(Boolean).join(' ');
-    const cc = card(cnv => {
-      const c = cnv.getContext('2d'); c.clearRect(0, 0, 192, 192);
-      c.save(); c.scale(192 / 200, 192 / 200);
-      if (!art('drawAbood', c, 100, 192, 2.45, { t: 0.4, suit: s.id, pose: 'stand' })) { c.fillStyle = s.col || '#fff'; c.strokeStyle = INK; c.lineWidth = 4; rr(c, 70, 70, 60, 110, 24); c.fill(); c.stroke(); c.fillStyle = s.visor || '#bfeaff'; c.beginPath(); c.arc(100, 66, 32, 0, TAU); c.fill(); c.stroke(); }
-      c.restore();
-    }, T('suit_' + s.id), sub, btn, cl);
+function hangarBoosters(body) {
+  body.appendChild(el('p', 'note-line', T('bo_arm')));
+  const stock = MM('boosters') || {}, g = el('div', 'cards boost-cards');
+  for (const bo of M.BOOSTERS || []) {
+    const have = stock[bo.id] || 0;
+    const cc = card(cnv => boostIcon(cnv.getContext('2d'), bo.id, 192, 0.4), T('bo_' + bo.id), T('bo_' + bo.id + '_d'),
+      { text: T('buy', bo.price), price: bo.price, disabled: M.coins() < bo.price, onClick: () => {
+        const r = MM('buyBooster', bo.id) || {};
+        if (r.ok) { bought(); ustaLine = TL('usta_buy'); } else { note(T('notEnough')); ustaLine = TL('usta_poor'); }
+        openSheet('hangar');
+      } }, have ? 'has' : '');
+    const hv = el('span', 'tier', T('bo_have', have)); cc.appendChild(hv);
     g.appendChild(cc);
   }
   body.appendChild(g);
 }
-// ---- missions + login ----
+
+// ---- costumes: character picker, colours, perk costumes, ship paint ----
+function srcText(src, st) {
+  if (!src) return '';
+  const pr = st && st.progress;
+  if (src.type === 'rival') return T('cs_src_rival', rvName(src.id));
+  if (src.type === 'ladder') return T('cs_src_ladder', src.lv);
+  if (src.type === 'badge' && /^stars\d+$/.test(src.id || '')) return T('cs_src_stars', pr ? pr[0] : (MM('starTotal') || 0), pr ? pr[1] : +src.id.slice(5));
+  if (src.type === 'badge') return T('cs_src_badge', T('bg_' + src.id));
+  return '';
+}
+function sheetCostumes(body) {
+  const ch = CHAR();
+  // 1) who flies: Abood, or Mozah once 10 missions are done
+  body.appendChild(el('p', 'sec-title', T('ch_title')));
+  const cg = el('div', 'chars');
+  for (const id of (M.CHARS || ['abood', 'mozah'])) {
+    const on = id === ch, locked = id === 'mozah' && MM('girlOpen') === false;
+    const c = el('div', 'char' + (on ? ' on' : '') + (locked ? ' locked' : ''));
+    const cnv = mk(168, 168); cnv.setAttribute('aria-hidden', 'true'); c.appendChild(cnv);
+    const pose = on ? 'wave' : 'stand', cos = costumeOf(id);
+    const draw = t => { const x = cnv.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, 168, 168); x.save(); x.scale(168 / 200, 168 / 200); if (!astro(x, 100, 194, 2.5, { t, char: id, costume: cos, pose })) astroFallback(x, 100, 190); x.restore(); };
+    if (on) addAnim(cnv, draw, 'sheet'); else draw(0.4);
+    const tx = el('div', 'char-tx');
+    tx.appendChild(el('b', null, T('ch_' + id)));
+    if (locked) {
+      const need = M.GIRL_MISSIONS || 10, have = Math.min(MM('missionsDone') || 0, need);
+      tx.appendChild(el('small', null, T('ch_lock', have, need)));
+      tx.appendChild(progBar(have / need));
+    } else if (on) tx.appendChild(el('small', 'playing', '✓ ' + T('ch_playing')));
+    if (!on) tx.appendChild(cardBtn({ text: locked ? T('bg_locked') : T('ch_pick'), cls: locked ? '' : 'sec', disabled: locked, onClick: () => pickChar(id) }));
+    c.appendChild(tx);
+    cg.appendChild(c);
+  }
+  body.appendChild(cg);
+  body.appendChild(el('p', 'note-line', T('cs_note')));
+  const all = COSTUMES(), fits = id => { const f = MM('costumeFits', id, ch); return f == null ? true : !!f; };
+  const wear = id => { if (MM('wearCostume', id) ?? MM('wearSuit', id)) { hook('sfx', 'chime'); hook('onChar', ch); openSheet('costumes'); } };
+  // 2) free colours, this character only
+  const cols = all.filter(c => (c.kind ? c.kind === 'color' : !c.perk && !c.price) && fits(c.id));
+  if (cols.length) {
+    body.appendChild(el('p', 'sec-title', T('cs_colors')));
+    const g = el('div', 'cards');
+    const worn = costumeOf(ch);
+    for (const C of cols) {
+      const on = C.id === worn;
+      g.appendChild(card(cnv => costumePic(cnv.getContext('2d'), C.id, ch, 192), T('cs_' + C.id), T('free'),
+        { text: on ? T('wearing') : T('wear'), cls: 'sec', disabled: on, onClick: () => wear(C.id) }, on ? 'on' : ''));
+    }
+    body.appendChild(g);
+  }
+  // 3) perk costumes (fit both characters)
+  const perks = all.filter(c => (c.kind ? c.kind === 'perk' : !!c.perk));
+  if (perks.length) {
+    body.appendChild(el('p', 'sec-title', T('cs_perks')));
+    const g = el('div', 'cards');
+    for (const C of perks) {
+      const st = MM('costumeState', C.id) || { owned: M.ownsSuit && M.ownsSuit(C.id), wearing: costumeOf(ch) === C.id, price: C.price, src: C.src || { type: 'coins' } };
+      const src = st.src || C.src || { type: 'coins' }, owned = !!st.owned, on = !!st.wearing;
+      const locked = !owned && (st.locked != null ? !!st.locked : src.type !== 'coins');
+      let btn;
+      if (on) btn = { text: T('wearing'), cls: 'sec', disabled: true };
+      else if (owned) btn = { text: T('wear'), cls: 'sec', onClick: () => wear(C.id) };
+      else if (locked) btn = { text: T('bg_locked'), disabled: true };
+      else {
+        const price = st.price != null ? st.price : C.price;
+        btn = { text: T('buy', price), price, disabled: M.coins() < price, onClick: () => {
+          const r = (MM('buyCostume', C.id) ?? MM('buySuit', C.id)) || {};
+          if (r.ok) { bought(); hook('onChar', ch); } else note(T(r.reason === 'locked' ? 'bg_locked' : 'notEnough'));
+          openSheet('costumes');
+        } };
+      }
+      const cc = card(cnv => costumePic(cnv.getContext('2d'), C.id, ch, 192), T('cs_' + C.id), null, null, ['perk', on ? 'on' : '', locked ? 'locked' : ''].filter(Boolean).join(' '));
+      cc.appendChild(el('small', 'fx', T('cp_' + C.id)));
+      if (st.warn ?? (C.id === 'link' && M.level('nabeeh') < 1)) cc.appendChild(el('small', 'warn', T('cs_linkNote')));
+      if (!owned && src.type !== 'coins') {
+        cc.appendChild(el('small', 'src', srcText(src, st)));
+        if (st.progress && st.progress[1]) cc.appendChild(progBar(st.progress[0] / st.progress[1]));
+      }
+      cc.appendChild(cardBtn(btn));
+      g.appendChild(cc);
+    }
+    body.appendChild(g);
+  }
+  // 4) ship paint (shared by both)
+  const skins = M.SKINS || [];
+  if (skins.length) {
+    body.appendChild(el('p', 'sec-title', T('cs_skins')));
+    const g = el('div', 'cards skins'), curSkin = idOf(MM('skin')) || 'falak';
+    for (const S of skins) {
+      const ss = MM('skinState', S.id), owned = ss ? !!ss.owned : (!!MM('ownsSkin', S.id) || S.id === 'falak'), on = ss ? !!ss.wearing : S.id === curSkin, src = S.src || { type: 'free' };
+      const btn = on ? { text: '✓', cls: 'sec', disabled: true } : owned ? { text: T('paint'), cls: 'sec', onClick: () => { if (MM('wearSkin', S.id)) { hook('sfx', 'chime'); hook('onChar', ch); } openSheet('costumes'); } } : { text: T('bg_locked'), disabled: true };
+      const cc = el('div', 'card skin' + (on ? ' on' : '') + (owned ? '' : ' locked'));
+      const cnv = mk(240, 150); cnv.setAttribute('aria-hidden', 'true'); cc.appendChild(cnv);
+      setTimeout(() => drawCardPic(cnv, 'skin', S.id, !owned), 20);
+      cc.appendChild(el('b', null, T('sk_' + S.id)));
+      if (!owned) cc.appendChild(el('small', 'src', srcText(src)));
+      cc.appendChild(cardBtn(btn));
+      g.appendChild(cc);
+    }
+    body.appendChild(g);
+  }
+}
+function pickChar(id) {
+  if (!MM('setChar', id)) { note(T('bg_locked')); return; }
+  setGirl(id === 'mozah'); safeCall(applyI18n);
+  hook('sfx', 'chime'); hook('onChar', id);
+  ustaLine = '';
+  relang();
+  if (sheetKind !== 'costumes') openSheet('costumes');
+}
+
+// ---- missions: the ladder, today's three, the login gift ----
 function sheetMissions(body) {
-  const box = el('div', 'login-box'), headR = el('div', 'login-head');
-  const L = M.login();
-  const tl = el('div'); tl.appendChild(el('b', null, T('lg_title'))); if (L.streak > 1) { tl.append(' · '); tl.appendChild(el('small', null, T('lg_streak', L.streak))); }
-  headR.appendChild(tl);
-  if (L.claimable) {
-    const b = el('button', 'btn alt'); b.type = 'button'; b.style.cssText = 'min-height:38px;font-size:15px;padding:2px 14px'; b.textContent = T('lg_claim', L.gift);
-    b.onclick = () => { const got = M.claimLogin(); if (got) { note(T('f_coins', '+' + got)); hook('sfx', 'chime'); } openSheet('missions'); };
-    headR.appendChild(b);
-  } else headR.appendChild(el('small', null, T('lg_done')));
-  box.appendChild(headR);
-  const days = el('div', 'login-days'); loginDays(days); box.appendChild(days);
-  body.appendChild(box);
+  const L = MM('ladder');
+  if (L && Array.isArray(L.missions)) {
+    const head = el('div', 'ladder-head');
+    head.appendChild(el('p', 'sec-title', T('ld_title', L.lv)));
+    const mp = el('span', 'multpill'); mp.setAttribute('dir', 'ltr');
+    mp.append('×' + nf(L.mult)); if (L.nextMult != null && L.nextMult > L.mult) { mp.appendChild(el('b', null, ' → ')); mp.append('×' + nf(L.nextMult)); }
+    mp.setAttribute('aria-label', T('ld_mult', L.mult));
+    head.appendChild(mp); body.appendChild(head);
+    body.appendChild(el('p', 'hint', T('ld_note', L.mult, L.nextMult, L.reward)));
+    L.missions.forEach((m, i) => {
+      const row = el('div', 'mission ladder' + (m.done ? ' done' : ''));
+      const tx = el('div'); tx.appendChild(el('b', null, T('lm_' + m.kind, m.goal))); tx.appendChild(el('br'));
+      tx.appendChild(el('small', null, m.done ? T('ld_wait') : T('ms_prog', Math.min(m.progress, m.goal), m.goal)));
+      row.appendChild(tx);
+      const b = el('button', 'skip'); b.type = 'button';
+      if (m.done) { b.textContent = '✓'; b.disabled = true; b.setAttribute('aria-label', T('ms_done')); }
+      else {
+        b.textContent = T('ld_skip', L.skipPrice); b.disabled = M.coins() < L.skipPrice;
+        b.onclick = () => { if (MM('skipLadder', i)) { hook('sfx', 'tick'); openSheet('missions'); } else note(T('notEnough')); };
+      }
+      row.appendChild(b);
+      row.appendChild(progBar(m.progress / Math.max(1, m.goal)));
+      body.appendChild(row);
+    });
+  }
   body.appendChild(el('p', 'sec-title', T('ms_daily')));
-  body.appendChild(el('p', 'hint', T('ms_note') + ' · ' + T('ms_bonus', M.DAILY_BONUS || 0)));
+  const bonus = MM('dailyBonus') ?? Math.round((M.DAILY_BONUS || 0) * (MM('dailyScale') || 1));
+  body.appendChild(el('p', 'hint', T('ms_note') + ' · ' + T('ms_bonus', bonus)));
   M.missions().forEach((m, i) => {
     const ready = !m.claimed && m.progress >= m.goal;
     const row = el('div', 'mission' + (ready ? ' done' : '') + (m.claimed ? ' claimed' : ''));
@@ -524,13 +898,102 @@ function sheetMissions(body) {
     row.appendChild(tx);
     const b = el('button'); b.type = 'button';
     if (m.claimed) { b.textContent = T('claimed'); b.disabled = true; }
-    else if (ready) { b.appendChild(coinIc()); b.append(T('claim')); b.onclick = () => { const got = M.claimMission(i); if (got) { note(T('f_coins', '+' + got)); hook('sfx', 'chime'); } openSheet('missions'); }; }
+    else if (ready) { b.appendChild(coinIc()); b.append(T('claim')); b.onclick = () => { const got = M.claimMission(i); if (got) { note(plusCoins(got)); hook('sfx', 'chime'); } openSheet('missions'); }; }
     else { b.textContent = T('ms_prog', m.progress, m.goal); b.disabled = true; }
     row.appendChild(b);
-    const pg = el('div', 'prog'); const fi = el('i'); fi.style.width = Math.round(clamp(m.progress / m.goal, 0, 1) * 100) + '%'; pg.appendChild(fi); row.appendChild(pg);
+    row.appendChild(progBar(m.progress / Math.max(1, m.goal)));
     body.appendChild(row);
   });
+  // login gift
+  const box = el('div', 'login-box'), headR = el('div', 'login-head');
+  const Lg = M.login();
+  const tl = el('div'); tl.appendChild(el('b', null, T('lg_title'))); if (Lg.streak > 1) { tl.append(' · '); tl.appendChild(el('small', null, T('lg_streak', Lg.streak))); }
+  headR.appendChild(tl);
+  if (Lg.claimable) {
+    const b = el('button', 'btn alt small'); b.type = 'button'; b.textContent = T('lg_claim', Lg.gift);
+    b.onclick = () => { const got = M.claimLogin(); if (got) { note(plusCoins(got)); hook('sfx', 'chime'); } openSheet('missions'); };
+    headR.appendChild(b);
+  } else headR.appendChild(el('small', null, T('lg_done')));
+  box.appendChild(headR);
+  const days = el('div', 'login-days'); loginDays(days); box.appendChild(days);
+  body.appendChild(box);
 }
+
+// ---- duels: the rogue robot ships ----
+function startDuelUI(rid) {
+  pendingDuel = rid; duelOn = null;
+  bakeSoon(themeOf((rivalDef(rid) || {}).theme));
+  const r = hook('onDuel', rid);
+  if (typeof H.onDuel !== 'function') { console.warn('ui: no onDuel hook'); pendingDuel = null; return; }
+  if (r === false || (r && r.ok === false)) {
+    pendingDuel = null;
+    note(r && r.reason === 'coins' ? T('notEnough') : T('bg_locked'));
+  }
+}
+function unlockPic(cnv, u) {
+  if (!u) return;
+  const c = cnv.getContext('2d');
+  if (u.kind === 'skin') drawCardPic(cnv, 'skin', u.id, false);
+  else costumePic(c, u.id, CHAR(), cnv.width);
+}
+function sheetDuels(body) {
+  const head = el('div', 'duel-head');
+  const say = el('p', 'say'); say.appendChild(el('b', null, T('n_usta') + ': ')); say.append(T('du_note')); head.appendChild(say);
+  const free = dayFree(), chip = el('span', 'day-chip' + (free ? ' on' : ' used'), (free ? '' : '✓ ') + T('du_day')); head.appendChild(chip);
+  body.appendChild(head);
+  const br = el('div', 'boosts in-sheet'); br.dataset.none = '1'; br.setAttribute('role', 'group'); br.setAttribute('aria-label', T('bo_title')); boostRow(br, true);
+  const bw = el('div', 'boost-line'); bw.appendChild(el('span', 'label', T('bo_title'))); bw.appendChild(br); body.appendChild(bw);
+  const list = MM('rivalList') || [], wrap = el('div', 'rivals');
+  list.forEach((r, k) => {
+    const R = rivalDef(r.id) || {}, open = !!r.open, beaten = !!r.beaten;
+    const c = el('div', 'rival' + (open ? '' : ' locked') + (beaten ? ' beaten' : ''));
+    const pic = el('div', 'rv-pic'), cnv = mk(240, 150); cnv.setAttribute('aria-hidden', 'true'); pic.appendChild(cnv);
+    pic.appendChild(el('span', 'rv-num', nf(k + 1)));
+    if (!open) { const lk = el('span', 'lock'); lk.innerHTML = LOCK_SVG; pic.appendChild(lk); }
+    setTimeout(() => drawCardPic(cnv, 'rival', r.id, !open, beaten ? 'fixed' : 'angry'), 20 + k * 30);
+    c.appendChild(pic);
+    const info = el('div', 'rv-info');
+    const nm = el('div', 'rv-name'); nm.appendChild(el('b', null, open || beaten ? rvName(r.id) : (lang() === 'ar' ? '؟؟؟' : '???')));
+    if (open) nm.appendChild(el('small', null, T('rv_' + r.id + '_t')));
+    info.appendChild(nm);
+    if (open) info.appendChild(el('p', 'rv-quote', '«' + (beaten ? T('rv_' + r.id + '_fixed') : TL('rv_' + r.id + '_taunt')) + '»'));
+    const meta = el('div', 'rv-meta');
+    const df = el('span', 'diff'); df.setAttribute('role', 'img'); df.setAttribute('aria-label', T('du_diff') + ' ' + nf(r.diff || R.diff || 1) + '/5');
+    df.appendChild(el('em', null, T('du_diff')));
+    for (let i = 0; i < 5; i++) df.appendChild(el('i', i < (r.diff || R.diff || 1) ? 'on' : '')); meta.appendChild(df);
+    if (open) { const sr3 = starRow(r.stars, 'stars3 sm'); sr3.setAttribute('aria-hidden', 'false'); sr3.setAttribute('role', 'img'); sr3.setAttribute('aria-label', T('a_stars', starCount(r.stars))); meta.appendChild(sr3); }
+    if (open && r.best) meta.appendChild(el('span', 'rv-best', T('du_best', r.best)));
+    else if (open && (r.par || R.par)) meta.appendChild(el('span', 'rv-best', T('du_par', r.par || R.par)));
+    info.appendChild(meta);
+    if (!open) {
+      const prev = list[k - 1], needName = !r.needDone ? jName(R.need || 'mars') : prev ? rvName(prev.id) : '';
+      info.appendChild(el('p', 'rv-lock', T('du_lockNext', needName)));
+    }
+    c.appendChild(info);
+    const act = el('div', 'rv-act');
+    if (open) {
+      const rw = el('div', 'rv-rew'); rw.appendChild(coinIc()); rw.append(nf(beaten ? r.rematchReward : r.firstReward));
+      if (free) rw.appendChild(el('em', 'x2', '×2'));
+      if (!beaten && r.unlock) { const uc = mk(64, 64); uc.className = 'rv-unl'; uc.setAttribute('aria-hidden', 'true'); setTimeout(() => unlockPic(uc, r.unlock), 40 + k * 30); rw.appendChild(uc); }
+      rw.title = beaten ? T('du_reward', r.rematchReward) : T('du_reward', r.firstReward) + (r.unlock ? ' · ' + T('du_unlock') : '');
+      rw.setAttribute('aria-label', rw.title);
+      act.appendChild(rw);
+      const b = el('button', 'btn ' + (beaten ? 'alt' : '') + ' fight'); b.type = 'button';
+      b.textContent = beaten ? rematchText() : T('du_fight');
+      b.onclick = () => startDuelUI(r.id);
+      act.appendChild(b);
+    } else {
+      const b = el('button', 'btn fight'); b.type = 'button'; b.disabled = true; b.innerHTML = LOCK_SVG; b.setAttribute('aria-label', T('bg_locked')); act.appendChild(b);
+    }
+    c.appendChild(act);
+    wrap.appendChild(c);
+  });
+  body.appendChild(wrap);
+  const firstOpen = list.find(r => r.open && !r.beaten); if (firstOpen) bakeSoon(themeOf((rivalDef(firstOpen.id) || {}).theme));
+}
+// Rematches are free (owner decision): "Rematch" with no price
+function rematchText() { const s = T('du_rematch'); return !s || s === 'du_rematch' || /undefined|NaN/.test(s) ? TT('b_rematch', 'عيدها', 'Rematch') : s; }
+
 // ---- badges ----
 function sheetBadges(body) {
   const list = M.badgeList();
@@ -545,7 +1008,7 @@ function sheetBadges(body) {
     const chip = el('span', 'tier', b.tiered ? (b.done ? T('tier_all') : b.tier > 0 ? T('tier_' + (b.tier - 1)) : T('tier_none')) : (b.done ? '✓' : T('bg_locked')));
     cc.appendChild(chip);
     if (!b.done && b.tiered) {
-      const pg = el('div', 'prog'), fi = el('i'); fi.style.width = Math.round(clamp(b.progress / b.goal, 0, 1) * 100) + '%'; pg.appendChild(fi); cc.appendChild(pg);
+      cc.appendChild(progBar(b.progress / Math.max(1, b.goal)));
       cc.appendChild(el('small', null, T('bg_prog', Math.min(b.progress, b.goal), b.goal) + ' · ' + T('bg_reward', b.reward)));
     } else if (!b.done) cc.appendChild(el('small', null, T('bg_reward', b.reward)));
     g.appendChild(cc);
@@ -558,7 +1021,8 @@ function helpPic(kind) {
     cnv.width = 192; cnv.height = 144; const c = cnv.getContext('2d'), t = 0.6;
     c.fillStyle = '#1d1640'; c.fillRect(0, 0, 192, 144); stars(c, 192, 144, 1, 18, 0.6);
     c.save(); c.scale(2, 2); // 96 x 72 logical
-    const ship = (x, y, o = {}) => art('drawShip', c, x, y, Object.assign({ t, tier: 0, guns: 1, tilt: 0, thrust: 0.7, suit: 'white' }, o)) || (c.fillStyle = '#f4f1ea', c.beginPath(), c.ellipse(x, y, 16, 7, 0, 0, TAU), c.fill());
+    const L = shipLook();
+    const ship = (x, y, o = {}) => art('drawShip', c, x, y, Object.assign({}, L, { t, tier: 0, guns: 1, tilt: 0, thrust: 0.7, aura: null }, o)) || (c.fillStyle = '#f4f1ea', c.beginPath(), c.ellipse(x, y, 16, 7, 0, 0, TAU), c.fill());
     if (kind === 'move') {
       c.save(); c.translate(30, 36); c.scale(0.55, 0.55); ship(0, 0, { tilt: -0.5 }); c.restore();
       c.strokeStyle = '#2fd4e6'; c.lineWidth = 2.4; c.lineCap = 'round'; c.lineJoin = 'round';
@@ -580,10 +1044,6 @@ function helpPic(kind) {
       if (!art('drawPickup', c, 'coin', 82, 50, t)) { c.fillStyle = '#e9b330'; c.beginPath(); c.arc(82, 50, 6, 0, TAU); c.fill(); }
     } else if (kind === 'pickups') {
       ['repair', 'shield', 'cell', 'rapid'].forEach((p, i) => { if (!art('drawPickup', c, p, 15 + i * 22, 36, t)) { c.fillStyle = ['#ff6b6b', '#2fd4e6', '#ffd45a', '#ff9a2a'][i]; c.beginPath(); c.arc(15 + i * 22, 36, 7, 0, TAU); c.fill(); } });
-    } else if (kind === 'junk') {
-      art('drawJunk', c, { x: 22, y: 26, s: 0.5, rot: 0.3, seed: 2, kind: 'panel', flash: 0, t });
-      art('drawJunk', c, { x: 70, y: 24, s: 0.5, rot: -0.2, seed: 4, kind: 'dish', flash: 0, t });
-      art('drawJunk', c, { x: 46, y: 52, s: 0.5, rot: 0, seed: 6, kind: 'drone', flash: 0, t });
     } else if (kind === 'hull') {
       for (let i = 0; i < 4; i++) { c.fillStyle = i < 3 ? '#d7262f' : '#3b3160'; c.strokeStyle = INK; c.lineWidth = 1.5; c.save(); c.translate(24 + i * 14, 36); c.transform(1, 0, -0.18, 1, 0, 0); rr(c, -5, -8, 10, 16, 2.5); c.fill(); c.stroke(); c.restore(); }
     } else if (kind === 'shield') {
@@ -595,6 +1055,23 @@ function helpPic(kind) {
       art('drawNabeeh', c, 26, 32, 0.8, { t, mood: 'happy', laser: true });
     } else if (kind === 'hangar') {
       art('drawUsta', c, 48, 70, 0.66, t);
+    } else if (kind === 'gates') {
+      art('drawUsta', c, 30, 70, 0.6, t);
+      c.fillStyle = '#ffd45a'; c.font = '800 13px ' + FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('LV 12', 70, 30);
+      c.strokeStyle = '#ffd45a'; c.lineWidth = 2; rr(c, 50, 20, 40, 20, 6); c.stroke();
+    } else if (kind === 'stars') {
+      const star = (x, y, r, on) => { c.beginPath(); for (let i = 0; i < 10; i++) { const a = i / 10 * TAU - Math.PI / 2, q = i % 2 ? r * 0.45 : r; c.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q); } c.closePath(); c.fillStyle = on ? '#e9b330' : '#5a4f7a'; c.fill(); c.strokeStyle = INK; c.lineWidth = 1.5; c.stroke(); };
+      star(24, 38, 11, true); star(48, 34, 13, true); star(72, 38, 11, false);
+    } else if (kind === 'duels') {
+      c.save(); c.translate(22, 38); c.scale(0.45, 0.45); ship(0, 0); c.restore();
+      rivalPic(c, 'khurda', 72, 36, 40, { t, mood: 'angry' });
+    } else if (kind === 'ladder') {
+      c.strokeStyle = '#e9eef6'; c.lineWidth = 2.5; c.beginPath(); c.moveTo(36, 66); c.lineTo(44, 6); c.moveTo(60, 66); c.lineTo(68, 6); for (let k = 0; k < 5; k++) { const y = 60 - k * 12; c.moveTo(36.8 + k * 1.6, y); c.lineTo(60.8 + k * 1.6, y); } c.stroke();
+      c.fillStyle = '#ffd45a'; c.font = '800 12px ' + FONT; c.textAlign = 'center'; c.fillText('×1.5', 80, 14);
+    } else if (kind === 'boosters') {
+      ['shield', 'super', 'hull', 'coins'].forEach((id, i) => { c.save(); c.translate(4 + i * 22, 25); boostIcon(c, id, 22, t, true); c.restore(); });
+    } else if (kind === 'mozah') {
+      c.save(); c.scale(0.33, 0.33); astro(c, 90, 210, 2.4, { t, char: 'abood', pose: 'wave' }); astro(c, 200, 210, 2.4, { t, char: 'mozah', costume: costumeOf('mozah'), pose: 'wave' }); c.restore();
     } else if (kind === 'legs') {
       planet(c, 'earth', 14, 54, 12, t); planet(c, 'moon', 82, 20, 10, t);
       c.setLineDash([3, 4]); c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(24, 48); c.quadraticCurveTo(50, 46, 72, 26); c.stroke(); c.setLineDash([]);
@@ -617,7 +1094,8 @@ function sheetHelp(body) {
   body.appendChild(el('p', 'hint', T('help_keys')));
   sec(TT('help_s_space', 'في الفضاء', 'Out in space'), [['meteor', 'help_meteor'], ['coins', 'help_coins'], ['pickups', 'help_pickups']]);
   sec(TT('help_s_ship', 'سفينتك', 'Your ship'), [['hull', 'help_hull'], ['shield', 'help_shield'], ['nabeeh', 'help_nabeeh'], ['hangar', 'help_hangar']]);
-  sec(TT('help_s_trips', 'الرحلات', 'Journeys'), [['legs', 'help_story'], ['legs', 'help_legs']]);
+  sec(TT('help_s_trips', 'الرحلات', 'Journeys'), [['legs', 'help_story'], ['legs', 'help_legs'], ['gates', 'help_gates'], ['stars', 'help_stars']]);
+  sec(T('b_duels') + ' · ' + T('b_missions'), [['duels', 'help_duels'], ['ladder', 'help_ladder'], ['boosters', 'help_boosters'], ['mozah', 'help_mozah']]);
   body.appendChild(el('p', 'sec-title', T('r_factTitle')));
   const facts = el('div', 'facts');
   const bodies = ['earth'].concat(M.JOURNEYS.map(j => j.planet || j.id));
@@ -635,7 +1113,7 @@ function sheetHelp(body) {
 // =============================================================================================
 // HUD
 let hc = {};
-let hasShield = false;
+let hasShield = false, canPause = true;
 function setTrip(jid, li) {
   const J = M.journey(jid); if (!J) return;
   cur = { jid, li };
@@ -651,19 +1129,79 @@ function setTrip(jid, li) {
 function hudShow(on) {
   hudOn = !!on;
   $('hud').hidden = !on; $('superBtn').hidden = !on;
-  if (!on) return;
+  if (!on) { duelOn = null; return; }
   const t = $('toast'); if (t) t.hidden = true;
 }
-export function showHud(on, jid, li) {
+// duel mode: the rival bar (portrait, name, HP with phase ticks, shield overlay, phase pips) replaces the trip bar
+function setDuel(rid) {
+  duelOn = rid || null;
+  $('trip').hidden = !!rid; $('tripLeg').hidden = !!rid; $('rivalBar').hidden = !rid;
+  $('hud').classList.toggle('duel', !!rid);
+  if (!rid) return;
+  const R = rivalDef(rid) || {}, phases = Array.isArray(R.phases) ? R.phases : [];
+  $('rvName').textContent = rvName(rid);
+  const bar = $('rvHp'); bar.querySelectorAll('.tick').forEach(e => e.remove());
+  for (let i = 1; i < phases.length; i++) { const tk = el('em', 'tick'); tk.style.left = (clamp(+phases[i].at || 0, 0, 1) * 100).toFixed(1) + '%'; bar.appendChild(tk); }
+  const pp = $('rvPhase'); pp.innerHTML = ''; if (phases.length > 1) for (let i = 0; i < phases.length; i++) pp.appendChild(el('i'));
+  hc.rvF = hc.rvPh = hc.rvSh = hc.rvTicks = hc.rvIn = hc.rvStun = undefined; $('rivalBar').style.opacity = ''; $('rivalBar').style.transform = '';
+  drawRvPortrait(rid, 0, 'angry');
+}
+function drawRvPortrait(rid, phase, mood) {
+  const cnv = $('rvPic'); if (!cnv) return; const c = cnv.getContext('2d'), s = cnv.width;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, s, s);
+  rivalPic(c, rid, s * 0.5, s * 0.5, s * 0.95, { t: 0.3, mood, phase });
+}
+function rivalHud(r) {
+  const rid = r.id || r.rid || duelOn || pendingDuel; if (!rid) return;
+  if (rid !== duelOn) setDuel(rid);
+  const max = Math.max(1, +r.max || 1), f = Math.round(clamp((+r.hp || 0) / max, 0, 1) * 500) / 500;
+  const ph = r.phase | 0, sh = Math.round(clamp(+r.shield || 0, 0, 1) * 50) / 50, intro = r.intro == null ? 1 : clamp(+r.intro, 0, 1);
+  if (Array.isArray(r.ticks) && r.ticks.join() !== hc.rvTicks) {
+    hc.rvTicks = r.ticks.join(); const bar = $('rvHp'); bar.querySelectorAll('.tick').forEach(e => e.remove());
+    for (const at of r.ticks) { const tk = el('em', 'tick'); tk.style.left = (clamp(+at || 0, 0, 1) * 100).toFixed(1) + '%'; bar.appendChild(tk); }
+  }
+  if (intro !== hc.rvIn) { const b = $('rivalBar'); b.style.opacity = intro.toFixed(2); b.style.transform = intro < 1 && !REDUCED ? 'translateY(' + Math.round((1 - intro) * -24) + 'px)' : ''; hc.rvIn = intro; }
+  if (!!r.stun !== hc.rvStun) { $('rivalBar').classList.toggle('stun', !!r.stun); hc.rvStun = !!r.stun; }
+  if (f !== hc.rvF) {
+    $('rvFill').style.transform = 'scaleX(' + f.toFixed(4) + ')';
+    if (hc.rvF != null && f < hc.rvF && !REDUCED) { const b = $('rivalBar'); b.classList.remove('hit'); void b.offsetWidth; b.classList.add('hit'); }
+    $('rivalBar').setAttribute('aria-label', rvName(rid) + ' · ' + Math.round(f * 100) + '%');
+    hc.rvF = f; hc.rvSh = undefined;
+  }
+  if (ph !== hc.rvPh) {
+    [...$('rvPhase').children].forEach((p, i) => p.classList.toggle('on', i <= ph));
+    if (hc.rvPh != null) drawRvPortrait(rid, ph, 'angry');
+    hc.rvPh = ph;
+  }
+  if (sh !== hc.rvSh) {
+    const R = rivalDef(rid) || {}, P = (R.phases || [])[ph] || {}, frac = ((P.shield || R.shield || {}).hp) || 0.12;
+    const w = sh * frac, s = $('rvShield');
+    s.hidden = sh <= 0; s.style.width = (w * 100).toFixed(2) + '%'; s.style.left = (Math.max(0, f - w) * 100).toFixed(2) + '%';
+    hc.rvSh = sh;
+  }
+}
+export function showHud(on, jid, li, o) {
   hudShow(on);
   if (!on) return;
+  let rid = null;
+  if (jid && typeof jid === 'object') { o = jid; jid = null; }
+  if (o && typeof o === 'object') rid = o.rid || (typeof o.duel === 'string' ? o.duel : null);
+  else if (!jid && pendingDuel) rid = pendingDuel;
+  pendingDuel = null;
   if (jid) cur = { jid, li: li | 0 };
   hc = {};
   try { hasShield = (M.stats().shieldCd || 0) > 0; } catch (e) { hasShield = false; }
-  if (cur.jid) setTrip(cur.jid, cur.li);
+  setCanPause(true);
+  if (rid) setDuel(rid); else { setDuel(null); if (cur.jid) setTrip(cur.jid, cur.li); }
   syncMute();
   $('pauseBtn').textContent = 'II';
 }
+export function setCanPause(b) {
+  canPause = b !== false;
+  const p = $('pauseBtn'); if (!p) return;
+  p.classList.toggle('off', !canPause); p.disabled = !canPause; p.setAttribute('aria-hidden', canPause ? 'false' : 'true');
+}
+export function superRect() { const b = $('superBtn'); return b && !b.hidden ? b.getBoundingClientRect() : null; }
 function pips(hp, maxHp) {
   const box = $('hull');
   if (hc.maxHp !== maxHp) { box.innerHTML = ''; for (let i = 0; i < maxHp; i++) box.appendChild(el('i')); hc.maxHp = maxHp; }
@@ -679,7 +1217,9 @@ function pips(hp, maxHp) {
 }
 export function hud(s) {
   if (!s || !hudOn) return;
-  if (s.jid && hc.trip !== s.jid + ':' + (s.li | 0)) setTrip(s.jid, s.li | 0);
+  if (s.canPause != null && (s.canPause !== false) !== canPause) setCanPause(s.canPause);
+  if (s.rival) rivalHud(s.rival);
+  else if (s.jid && hc.trip !== s.jid + ':' + (s.li | 0)) { if (duelOn) setDuel(null); setTrip(s.jid, s.li | 0); }
   const hp = Math.max(0, Math.round(s.hp ?? 0)), maxHp = Math.max(1, Math.round(s.maxHp ?? 3));
   if (hp !== hc.hp || maxHp !== hc.maxHp) pips(hp, maxHp);
   if (s.score !== hc.score) { $('hScore').textContent = nf(s.score | 0); hc.score = s.score; }
@@ -690,12 +1230,14 @@ export function hud(s) {
     hc.combo = combo;
   }
   if (s.coins !== hc.coins) { $('hCoins').textContent = nf(s.coins | 0); if (hc.coins != null && s.coins > hc.coins && !hc.coinPop) { bump($('coinBox')); hc.coinPop = setTimeout(() => { hc.coinPop = 0; }, 300); } hc.coins = s.coins; }
-  const prog = Math.round(clamp(+s.prog || 0, 0, 1) * 500) / 500;
-  if (prog !== hc.prog) {
-    const f = clamp((cur.li + prog) / 3, 0, 1);
-    $('tripFill').style.transform = 'scaleX(' + f.toFixed(4) + ')';
-    $('tripShip').style.left = (f * 100).toFixed(2) + '%';
-    hc.prog = prog;
+  if (!duelOn) {
+    const prog = Math.round(clamp(+s.prog || 0, 0, 1) * 500) / 500;
+    if (prog !== hc.prog) {
+      const f = clamp((cur.li + prog) / 3, 0, 1);
+      $('tripFill').style.transform = 'scaleX(' + f.toFixed(4) + ')';
+      $('tripShip').style.left = (f * 100).toFixed(2) + '%';
+      hc.prog = prog;
+    }
   }
   const sf = Math.round(clamp(+s.superF || 0, 0, 1) * 100) / 100;
   if (sf !== hc.sf) {
@@ -721,7 +1263,7 @@ export function showPause(on) {
   const p = $('pause'); if (!p) return;
   p.hidden = !on;
   $('pauseBtn').textContent = on ? '▶' : 'II';
-  if (on) { syncMute(); hideNote(); const t = $('toast'); if (t) t.hidden = true; if (kbd) try { $('resumeBtn').focus({ preventScroll: true }); } catch (e) {} }
+  if (on) { syncMute(); syncFps(); hideNote(); const t = $('toast'); if (t) t.hidden = true; if (kbd) try { $('resumeBtn').focus({ preventScroll: true }); } catch (e) {} }
 }
 
 // =============================================================================================
@@ -737,15 +1279,23 @@ function flyCoin() {
 }
 function resultParts(r) {
   if (!r.win) return [{ key: 'r_kept', n: r.kept || 0 }];
-  const out = [{ key: r.first === false ? 'r_replay' : 'r_reward', n: r.reward || 0 }, { key: 'r_picked', n: r.picked != null ? r.picked : (r.run && r.run.coins) || 0 }];
+  const out = [{ key: r.duel ? 'r_duelReward' : r.first === false ? 'r_replay' : 'r_reward', n: r.reward || 0 }, { key: 'r_picked', n: r.picked != null ? r.picked : (r.run && r.run.coins) || 0 }];
   if (r.bonus) out.push({ key: 'r_bonus', n: r.bonus });
+  if (typeof r.dayBonus === 'number' && r.dayBonus > 0) out.push({ key: 'r_dayBonus', n: r.dayBonus });
+  if (r.starPay) out.push({ key: 'r_starPay', n: r.starPay });
   return out;
 }
+const resultTotal = (r, parts) => r.win ? (r.total != null ? r.total : parts.reduce((a, p) => a + p.n, 0)) : (r.kept || 0);
+function partText(p, n) {
+  if (keyIsFn(p.key)) return fixSign(T(p.key, n), n);
+  return T(p.key) + ' ' + sgn(n);
+}
 function showParts(parts, upto, f) {
-  const ids = ['swPartR', 'swPartC', 'swPartB'];
-  ids.forEach((id, i) => {
-    const e = $(id), p = parts[i];
-    e.textContent = p && i <= upto ? T(p.key) + ' +' + nf(i < upto ? p.n : Math.round(p.n * f)) : '';
+  const box = $('swParts');
+  if (box.childElementCount !== parts.length) { box.innerHTML = ''; parts.forEach(() => box.appendChild(el('span'))); }
+  [...box.children].forEach((e, i) => {
+    const p = parts[i];
+    e.textContent = p && i <= upto ? partText(p, i < upto ? p.n : Math.round(p.n * f)) : '';
     e.classList.toggle('hot', !!p && i === upto && f < 1);
   });
 }
@@ -757,7 +1307,7 @@ function endCount() {
 }
 function runCount(r) {
   stopCount();
-  const parts = resultParts(r), total = r.win ? (r.total != null ? r.total : parts.reduce((a, p) => a + p.n, 0)) : (r.kept || 0);
+  const parts = resultParts(r), total = resultTotal(r, parts);
   const now = M.coins(), base = Math.max(0, now - total);
   const lens = parts.map(p => p.n > 0 ? clamp(0.35 + p.n / 400, 0.45, 1.1) : 0.05);
   count = { parts, total, base, lens, t: -0.45, last: performance.now(), tick: 0, fly: 0, raf: 0 };
@@ -779,79 +1329,168 @@ function runCount(r) {
   };
   count.raf = requestAnimationFrame(step);
 }
+// U1: never offer "Next" when it would replay the leg just flown
 function nextTarget(r) {
-  if (!r || !r.win) return null;
-  const ji = M.journeyIndex(r.jid);
+  if (!r || !r.win || r.duel) return null;
   if (r.li < 2) return { jid: r.jid, li: r.li + 1, leg: true }; // finishing a leg always opens the next one
-  const nj = M.JOURNEYS[ji + 1];
-  if (nj && M.isUnlocked(nj.id)) { const n = M.nextPlayable(); return { jid: n.jid, li: n.li, leg: false }; }
+  const ji = M.journeyIndex(r.jid), nj = M.JOURNEYS[ji + 1];
+  if (nj && M.isUnlocked(nj.id)) {
+    const n = M.nextPlayable();
+    if (n && !(n.jid === r.jid && n.li === r.li)) return { jid: n.jid, li: n.li, leg: false };
+  }
   return null;
 }
+// one helpful line under the card (§7.5): a gate that is close, the next star, the ladder mission nearest done
+function nudge(r) {
+  if (r.gate && r.gate.left > 0) return T('r_gateNear', r.gate.left, jName(r.gate.jid));
+  // a journey gate that is near
+  const nextJ = M.JOURNEYS.find((j, i) => i > 0 && !M.isUnlocked(j.id) && M.legsDone(M.JOURNEYS[i - 1].id) >= 3);
+  if (nextJ) { const g = MM('journeyNeed', nextJ.id); if (g && !g.ok && g.need - g.have <= 3) return T('r_gateNear', g.need - g.have, jName(nextJ.id)); }
+  // the next star of this leg
+  if (!r.duel && r.win && Array.isArray(r.stars) && !r.stars[2]) {
+    const L = M.leg ? M.leg(r.jid, r.li) : null, sc = (r.run && r.run.score) || 0;
+    if (L && L.star && sc < L.star) return T('r_nextStar', L.star, sc);
+  }
+  // the ladder mission closest to done
+  const Ld = MM('ladder');
+  if (Ld && Array.isArray(Ld.missions)) {
+    const open = Ld.missions.filter(m => !m.done).sort((a, b) => b.progress / b.goal - a.progress / a.goal)[0];
+    if (open) return T('ld_title', Ld.lv) + ': ' + T('lm_' + open.kind, open.goal) + ' · ' + T('ms_prog', Math.min(open.progress, open.goal), open.goal);
+  }
+  return '';
+}
 function fillResult(r, animate) {
-  const panel = $('overPanel'), J = M.journey(r.jid), planetId = (J && (J.planet || J.id)) || r.jid, arrived = !!(r.win && r.journeyDone);
-  panel.classList.toggle('win', !!r.win); panel.classList.toggle('lose', !r.win); panel.classList.toggle('postcard', arrived);
-  $('overTitle').textContent = !r.win ? T('r_fail') : arrived ? T('r_arrive', pName(planetId)) : T('r_win');
-  if (animate || !r.botLine) r.botLine = TL(arrived ? 'bot_arrive' : r.win ? 'bot_win' : 'bot_lose');
-  $('overBotTxt').textContent = r.botLine;
+  const panel = $('overPanel'), duel = !!r.duel, J = duel ? null : M.journey(r.jid), planetId = (J && (J.planet || J.id)) || r.jid, arrived = !!(!duel && r.win && r.journeyDone);
+  panel.classList.toggle('win', !!r.win); panel.classList.toggle('lose', !r.win); panel.classList.toggle('postcard', arrived); panel.classList.toggle('duel', duel);
   const run = r.run || {};
+  if (duel) $('overTitle').textContent = r.win ? T('du_fixedTitle', rvName(r.rid)) : T('du_lose');
+  else $('overTitle').textContent = !r.win ? T('r_fail') : arrived ? T('r_arrive', pName(planetId)) : T('r_win');
+  if (animate || !r.botLine) r.botLine = TL(duel ? (r.win ? 'bot_duelWin' : 'bot_duelLose') : arrived ? 'bot_arrive' : r.win ? 'bot_win' : 'bot_lose');
+  $('overBotTxt').textContent = r.botLine;
   let msg;
-  if (!r.win) msg = T('r_failHint') + (M.journeyIndex(r.jid) > 0 || r.li > 0 ? ' ' + T('r_tryUpgrade') : '');
+  if (duel) msg = r.win ? '«' + T('rv_' + r.rid + '_fixed') + '» ' + T('du_win') : T('r_failHint') + ' ' + T('r_tryUpgrade');
+  else if (!r.win) msg = T('r_failHint') + (M.journeyIndex(r.jid) > 0 || r.li > 0 ? ' ' + T('r_tryUpgrade') : '');
   else if (r.newBest) msg = T('r_newBest');
   else if (run.noHit || run.hits === 0) msg = T('r_noHit');
   else msg = T('m_legOf', r.li, 3) + ' · ' + legName(r.jid, r.li);
   $('overMsg').textContent = msg;
-  $('sScore').textContent = nf(run.score || 0); $('sKills').textContent = nf(run.kills || 0);
-  $('sBest').textContent = nf(r.best != null ? r.best : M.best(r.jid));
-  $('sBest').parentElement.classList.toggle('nb', !!r.newBest);
-  $('sBestLbl').textContent = r.newBest ? T('r_newBest') : T('r_best');
-  // art: postcard on arrival, otherwise Abood + Nabeeh
+  // stars (new ones pop in)
+  const sb = $('overStars'); sb.innerHTML = '';
+  if (r.win && Array.isArray(r.stars)) {
+    const row = starRow(r.stars, 'stars3 big', animate && !REDUCED ? (r.newStars || []) : []);
+    const L = duel ? null : (M.leg ? M.leg(r.jid, r.li) : null), R = duel ? rivalDef(r.rid) : null;
+    const tips = duel ? [T('du_win'), T('st_2', 50), T('du_par', (R && R.par) || 0)] : [T('st_1'), T('st_2', Math.round((M.STAR_HULL || 0.6) * 100)), T('st_3', nf((L && L.star) || 0))];
+    [...row.children].forEach((s, i) => { s.title = tips[i]; });
+    row.setAttribute('aria-hidden', 'false'); row.setAttribute('role', 'img'); row.setAttribute('aria-label', T('r_stars') + ' · ' + T('a_stars', starCount(r.stars)));
+    sb.appendChild(row);
+  }
+  sb.hidden = !sb.childElementCount;
+  // score boxes: legs = score / kills / best; duels = time / hull / best time
+  for (const id of ['sScore', 'sBest']) $(id).dir = duel ? 'auto' : 'ltr';
+  if (duel) {
+    const row = (MM('rivalList') || []).find(x => x.id === r.rid), best = r.best != null ? r.best : row && row.best;
+    setScore(0, nf(Math.round(run.time || 0)) + T('sec'), T('du_time'));
+    setScore(1, nf(Math.max(0, run.hpEnd || 0)) + '/' + nf(run.maxHp || 0), T('h_hull'));
+    setScore(2, best ? nf(Math.round(best)) + T('sec') : '–', r.newBest ? T('r_newBest') : T('r_best'));
+    $('sBest').parentElement.classList.toggle('nb', !!r.newBest);
+  } else {
+    setScore(0, nf(run.score || 0), T('r_score')); setScore(1, nf(run.kills || 0), T('r_kills'));
+    setScore(2, nf(r.best != null ? r.best : M.best(r.jid)), r.newBest ? T('r_newBest') : T('r_best'));
+    $('sBest').parentElement.classList.toggle('nb', !!r.newBest);
+  }
+  // coin multiplier line
+  const mul = +r.coinMult || 1, ml = $('swMult');
+  ml.hidden = !(mul > 1.001); if (mul > 1.001) ml.textContent = T('r_coinMult', Math.round(mul * 100) / 100);
+  // art: postcard on arrival, the fixed rival after a duel, otherwise the player + Nabeeh
   dropAnims('over');
   const fact = $('overFact');
   if (arrived) {
     fact.hidden = false; fact.textContent = '';
     fact.appendChild(el('b', null, T('r_postcard', pName(planetId)) + ' · ')); fact.append(T('r_factTitle') + ' ' + T('fact_' + planetId));
+    const L = shipLook();
     addAnim($('avOver'), t => {
       const cnv = $('avOver'), c = cnv.getContext('2d'), w = cnv.width, h = cnv.height;
       c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, w, h); stars(c, w, h, t, 50, 0.9);
       planet(c, planetId, w * 0.55, h * 0.56, h * (planetId === 'saturn' ? 0.24 : 0.34), t * 0.3);
-      c.save(); c.translate(w * 0.2, h * 0.24 + (REDUCED ? 0 : Math.sin(t * 1.5) * 4)); c.scale(1.4, 1.4); art('drawShip', c, 0, 0, { t, tier: M.tier(), guns: M.stats().guns, tilt: 0.1, thrust: 0.5, suit: M.suit().id }); c.restore();
+      c.save(); c.translate(w * 0.2, h * 0.24 + (REDUCED ? 0 : Math.sin(t * 1.5) * 4)); c.scale(1.4, 1.4); art('drawShip', c, 0, 0, Object.assign({}, L, { t, tilt: 0.1, thrust: 0.5 })); c.restore();
+    }, 'over');
+  } else if (duel) {
+    fact.hidden = true;
+    addAnim($('avOver'), t => {
+      const cnv = $('avOver'), c = cnv.getContext('2d'), w = cnv.width, h = cnv.height, k = h / 300;
+      c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, w, h); stars(c, w, h * 0.75, t, 34, 0.8);
+      const bob = REDUCED ? 0 : Math.sin(t * 1.6) * 5;
+      rivalPic(c, r.rid, w * 0.7, h * 0.33 + bob * k, h * 0.42, { t, mood: r.win ? 'fixed' : 'angry' });
+      c.save(); c.scale(k, k); astro(c, (w / k) * 0.3, 284, 2.4, { t, pose: r.win ? 'cheer' : 'sad' }); c.restore();
     }, 'over');
   } else {
     fact.hidden = true;
     addAnim($('avOver'), t => drawDuoCanvas($('avOver'), t, { abood: { pose: r.win ? 'cheer' : 'sad' }, nabeeh: { mood: r.win ? 'happy' : 'sad' } }), 'over');
   }
-  // unlock line
+  // unlock line (next journey)
   const ul = $('overUnlock');
-  if (r.win && r.unlocked) { ul.hidden = false; ul.textContent = T('r_unlocked', jName(r.unlocked)); } else ul.hidden = true;
+  if (!duel && r.win && r.unlocked) { ul.hidden = false; ul.textContent = T('r_unlocked', jName(r.unlocked)); } else ul.hidden = true;
+  // banners: ladder level-up, Mozah joined, duel unlock card
+  const ex = $('overExtra'); ex.innerHTML = '';
+  if (r.levelUp) { const lu = el('p', 'banner lvl'); lu.appendChild(el('b', null, '▲ ')); lu.append(T('ld_up', r.levelUp.lv, r.levelUp.mult, r.levelUp.reward)); ex.appendChild(lu); }
+  if (r.girl) {
+    const gb = el('button', 'banner girl'); gb.type = 'button'; const cv = mk(64, 64); cv.setAttribute('aria-hidden', 'true');
+    const c = cv.getContext('2d'); c.save(); c.scale(64 / 200, 64 / 200); c.translate(0, 90); astro(c, 100, 194, 2.6, { t: 0.4, char: 'mozah', costume: costumeOf('mozah'), pose: 'wave' }); c.restore();
+    gb.appendChild(cv); gb.appendChild(el('span', null, T('girlNew')));
+    gb.onclick = () => { endCount(); pendingSheet = 'costumes'; hook('onQuit'); };
+    ex.appendChild(gb);
+  }
+  const unl = duel ? (r.win && r.unlock) : (r.levelUp && r.levelUp.unlock);
+  if (unl && unl.id) {
+    const u = unl, uc = el('div', 'banner unlock-card'), cv = mk(96, 96); cv.setAttribute('aria-hidden', 'true'); uc.appendChild(cv); unlockPic(cv, u);
+    const tx = el('div'); tx.appendChild(el('small', null, T('du_unlock'))); tx.appendChild(el('b', null, u.kind === 'skin' ? T('sk_' + u.id) : T('cs_' + u.id))); uc.appendChild(tx);
+    const isOn = u.kind === 'skin' ? idOf(MM('skin')) === u.id : costumeOf() === u.id;
+    const wb = el('button', 'btn alt small'); wb.type = 'button'; wb.textContent = isOn ? T('wearing') : (u.kind === 'skin' ? T('paint') : T('wear')); wb.disabled = isOn;
+    wb.onclick = () => { const ok = u.kind === 'skin' ? MM('wearSkin', u.id) : MM('wearCostume', u.id); if (ok) { hook('sfx', 'chime'); hook('onChar', CHAR()); wb.textContent = T('wearing'); wb.disabled = true; } };
+    uc.appendChild(wb); ex.appendChild(uc);
+  }
+  ex.hidden = !ex.childElementCount;
   // missions finished + new badges
   const ms = $('overMissions'); ms.innerHTML = '';
-  for (const m of r.missions || []) ms.appendChild(el('span', 'badge-chip ms-chip', T('ms_' + m.kind, m.goal) + ' · ' + T('bg_reward', m.reward)));
+  for (const m of r.missions || []) ms.appendChild(el('span', 'badge-chip ms-chip', T((m.set === 'ladder' ? 'lm_' : 'ms_') + m.kind, m.goal) + (m.reward ? ' · ' + T('bg_reward', m.reward) : '')));
   const bs = $('overBadges'); bs.innerHTML = '';
   for (const b of r.badges || []) {
     const chip = el('span', 'badge-chip'), cnv = mk(48, 48); cnv.setAttribute('aria-hidden', 'true'); medal(cnv.getContext('2d'), b.id, b.tiered ? b.tier : 3, 48);
     chip.appendChild(cnv); chip.append((b.tiered ? T('bc_' + b.id) + ' · ' + T('tier_' + b.tier) : T('bg_' + b.id)) + ' · ' + T('bg_reward', b.reward || 0)); bs.appendChild(chip);
   }
-  // buttons
-  const nt = nextTarget(r), nb = $('nextBtn'), rb = $('retryBtn');
-  nb.hidden = !nt;
-  if (nt) nb.textContent = nt.leg ? T('b_next') : T('m_next', jName(nt.jid));
-  rb.className = r.win ? 'btn alt' : 'btn';
-  rb.textContent = r.win ? T('b_replay') : T('b_retry');
+  const nd = $('overNudge'), ntx = nudge(r); nd.hidden = !ntx; nd.textContent = ntx;
+  // buttons: legs = Next / Retry / Station; duels = Duels / Rematch / Station
+  const nb = $('nextBtn'), rb = $('retryBtn');
+  if (duel) {
+    nb.hidden = false; nb.className = r.win ? 'btn' : 'btn alt'; nb.textContent = T('b_duels');
+    rb.className = r.win ? 'btn alt' : 'btn'; rb.textContent = rematchText();
+  } else {
+    const nt = nextTarget(r);
+    nb.hidden = !nt; nb.className = 'btn';
+    if (nt) { nb.textContent = nt.leg ? T('b_next') : T('m_next', jName(nt.jid)); bakeSoon(themeOf(nt.jid)); }
+    rb.className = r.win ? 'btn alt' : 'btn';
+    rb.textContent = r.win ? T('b_replay') : T('b_retry');
+  }
   $('quitBtn').textContent = T('b_station');
   if (!animate) { // re-render after a language switch: final numbers, no recount
-    const parts = resultParts(r), total = r.win ? (r.total != null ? r.total : parts.reduce((a, p) => a + p.n, 0)) : (r.kept || 0);
+    const parts = resultParts(r), total = resultTotal(r, parts);
     $('swCoins').textContent = nf(total); showParts(parts, parts.length - 1, 1); syncCoins();
   }
 }
+function setScore(i, val, label) {
+  const ids = [['sScore', 'sScoreLbl'], ['sKills', 'sKillsLbl'], ['sBest', 'sBestLbl']][i];
+  $(ids[0]).textContent = val; $(ids[1]).textContent = label;
+}
 export function showResult(r) {
   r = Object.assign({}, r || {});
-  lastRes = r; cur = { jid: r.jid, li: r.li | 0 };
+  if (r.duel && !r.rid) r.rid = duelOn || pendingDuel;
+  lastRes = r; if (!r.duel) cur = { jid: r.jid, li: r.li | 0 };
   hudShow(false); hideNote(); $('pause').hidden = true; $('menu').hidden = true; $('sheet').hidden = true;
   $('over').hidden = false;
   fillResult(r, true);
   runCount(r);
   maybeToast();
-  if (kbd) try { (r.win && nextTarget(r) ? $('nextBtn') : $('retryBtn')).focus({ preventScroll: true }); } catch (e) {}
+  if (kbd) try { (r.duel ? (r.win ? $('nextBtn') : $('retryBtn')) : (r.win && nextTarget(r) ? $('nextBtn') : $('retryBtn'))).focus({ preventScroll: true }); } catch (e) {}
 }
 
 // =============================================================================================
@@ -860,9 +1499,11 @@ function relang() {
   if (!$('menu').hidden) { renderMenu(); const tx = $('botTipTxt'); if (tx) tx.textContent = TL('bot_menu'); }
   if (sheetKind) { ustaLine = ''; openSheet(sheetKind); }
   if (!$('over').hidden && lastRes) { endCount(); fillResult(lastRes, false); }
-  if (hudOn && cur.jid) { setTrip(cur.jid, cur.li); hc.hp = undefined; hc.maxHp = undefined; hc.full = undefined; }
-  if (!$('loginPop').hidden) { const L = loginDays($('loginDays')); $('loginClaim').textContent = T('lg_claim', L.gift); }
-  syncMute(); syncCoins();
+  if (hudOn && duelOn) { const d = duelOn; setDuel(d); }
+  else if (hudOn && cur.jid) setTrip(cur.jid, cur.li);
+  if (hudOn) { hc.hp = undefined; hc.maxHp = undefined; hc.full = undefined; }
+  if (!$('loginPop').hidden) { const L = loginDays($('loginDays')); loginExtra($('loginBot'), L); $('loginClaim').textContent = T('lg_claim', L.gift); }
+  syncMute(); syncCoins(); syncFps();
   if (!ldDone) ldTip();
 }
 function registerSW() {
@@ -874,18 +1515,29 @@ function registerSW() {
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) { updateReady = true; maybeToast(); } });
   } catch (e) { /* sandboxed frames refuse service workers; the game still runs */ }
 }
+// keep Tab inside an open dialog (sheet / pause / results / login gift)
+function trapTab(e) {
+  const box = ['sheet', 'pause', 'loginPop', 'over'].map($).find(x => x && !x.hidden); if (!box) return;
+  const f = [...box.querySelectorAll('button:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent !== null);
+  if (!f.length) return;
+  const a = f[0], z = f[f.length - 1], ae = document.activeElement;
+  if (!box.contains(ae)) { e.preventDefault(); a.focus(); }
+  else if (e.shiftKey && ae === a) { e.preventDefault(); z.focus(); }
+  else if (!e.shiftKey && ae === z) { e.preventDefault(); a.focus(); }
+}
 export function initUI(h) {
   H = h || {};
   if (inited) return; inited = true;
+  setGirl(isGirl());
   const fa = $('flagAr'), fe = $('flagEn'); if (fa) fa.innerHTML = FLAG.ar; if (fe) fe.innerHTML = FLAG.en;
   safeCall(applyI18n);
   // menu
-  $('launchBtn').onclick = () => { ensureSel(); if (!M.canPlay(selJ, selL)) return; cur = { jid: selJ, li: selL }; hook('onLaunch', selJ, selL); };
+  $('launchBtn').onclick = () => { ensureSel(); if (!M.canPlay(selJ, selL)) return; cur = { jid: selJ, li: selL }; pendingDuel = null; hook('onLaunch', selJ, selL); };
   document.querySelectorAll('[data-sheet]').forEach(b => { b.onclick = () => openSheet(b.dataset.sheet); });
   $('sheetClose').onclick = closeSheet;
   $('sheet').addEventListener('pointerdown', e => { if (e.target === $('sheet')) closeSheet(); });
   $('loginPop').addEventListener('pointerdown', e => { if (e.target === $('loginPop')) $('loginPop').hidden = true; });
-  $('menuMute').onclick = doMute; $('muteBtn').onclick = doMute; $('pauseMute').onclick = doMute;
+  $('menuMute').onclick = doMute; $('pauseMute').onclick = doMute; if ($('muteBtn')) $('muteBtn').onclick = doMute;
   $('fpsBtn').onclick = doFps; $('pauseFps').onclick = doFps; syncFps(); window.addEventListener('langchange', syncFps);
   // fullscreen (Android / desktop), also tries the landscape lock
   const fsEl = document.documentElement;
@@ -907,8 +1559,8 @@ export function initUI(h) {
   addEventListener('langchange', relang);
   // HUD buttons: pointerdown never reaches the canvas drag
   const stop = e => e.stopPropagation();
-  for (const id of ['pauseBtn', 'muteBtn']) $(id).addEventListener('pointerdown', stop);
-  $('pauseBtn').onclick = e => { if ($('pause').hidden) hook('onPause'); else hook('onResume'); e.currentTarget.blur(); };
+  for (const id of ['pauseBtn', 'muteBtn']) if ($(id)) $(id).addEventListener('pointerdown', stop);
+  $('pauseBtn').onclick = e => { if (!canPause && $('pause').hidden) return; if ($('pause').hidden) hook('onPause'); else hook('onResume'); e.currentTarget.blur(); };
   const sb = $('superBtn');
   sb.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); sb.classList.add('press'); hook('onSuper'); });
   const unpress = () => sb.classList.remove('press');
@@ -917,19 +1569,28 @@ export function initUI(h) {
   sb.addEventListener('contextmenu', e => e.preventDefault());
   // pause card
   $('resumeBtn').onclick = () => hook('onResume');
-  $('restartBtn').onclick = () => hook('onRetry');
+  $('restartBtn').onclick = () => { if (duelOn) pendingDuel = duelOn; hook('onRetry'); };
   $('pauseQuit').onclick = () => hook('onQuit');
   // results
-  $('nextBtn').onclick = () => { endCount(); const n = nextTarget(lastRes); if (n) cur = { jid: n.jid, li: n.li }; hook('onNext'); };
-  $('retryBtn').onclick = () => { endCount(); if (lastRes) cur = { jid: lastRes.jid, li: lastRes.li | 0 }; hook('onRetry'); };
+  $('nextBtn').onclick = () => {
+    endCount();
+    if (lastRes && lastRes.duel) { if (typeof H.onDuels === 'function') hook('onDuels'); else { pendingSheet = 'duels'; hook('onQuit'); } return; }
+    const n = nextTarget(lastRes); if (n) cur = { jid: n.jid, li: n.li }; hook('onNext');
+  };
+  $('retryBtn').onclick = () => {
+    endCount();
+    if (lastRes && lastRes.duel) { startDuelUI(lastRes.rid); return; }
+    if (lastRes) cur = { jid: lastRes.jid, li: lastRes.li | 0 }; hook('onRetry');
+  };
   $('quitBtn').onclick = () => { endCount(); hook('onQuit'); };
   $('over').addEventListener('pointerdown', e => { if (count && !(e.target.closest && e.target.closest('button'))) endCount(); });
   // toast
   $('toastBtn').onclick = () => location.reload();
-  // keys: Esc closes a sheet / the login gift (game.js owns P / Esc for pause in flight)
+  // keys: Esc closes a sheet / the login gift (game.js owns P / Esc for pause in flight); Tab stays inside dialogs
   addEventListener('pointerdown', () => { kbd = false; }, true);
   addEventListener('keydown', e => {
     kbd = true;
+    if (e.key === 'Tab') { trapTab(e); return; }
     if (e.code !== 'Escape') return;
     if (!$('sheet').hidden) { closeSheet(); e.stopPropagation(); }
     else if (!$('loginPop').hidden) { $('loginPop').hidden = true; }

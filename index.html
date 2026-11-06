@@ -39,12 +39,18 @@
       <canvas class="trip-ic" id="tripTo" width="56" height="56" aria-hidden="true"></canvas>
     </div>
     <span class="trip-leg" id="tripLeg"></span>
+    <div class="rival-bar" id="rivalBar" role="img" hidden>
+      <canvas class="rv-face" id="rvPic" width="72" height="72" aria-hidden="true"></canvas>
+      <div class="rv-main">
+        <div class="rv-top"><b id="rvName" dir="auto"></b><span class="rv-phase" id="rvPhase" aria-hidden="true"></span></div>
+        <div class="rv-hp" id="rvHp"><i id="rvFill"></i><i class="rv-sh" id="rvShield" hidden></i></div>
+      </div>
+    </div>
   </div>
   <div class="hud-r">
     <div class="stat score-box" id="scoreBox"><span id="hScore" dir="ltr">0</span><em class="combo" id="comboTag" dir="ltr" hidden>×2</em></div>
     <div class="stat coin-box" id="coinBox"><i class="coin" aria-hidden="true"></i><span id="hCoins" dir="ltr">0</span></div>
     <button class="corner" id="pauseBtn" type="button" data-i18n-aria="a_pause" aria-label="إيقاف مؤقت">II</button>
-    <button class="corner" id="muteBtn" type="button" data-i18n-aria="a_sound" aria-label="الصوت" aria-pressed="false">♪</button>
   </div>
 </div>
 <button class="super" id="superBtn" type="button" data-i18n-aria="a_super" aria-label="شعاع الأمل" hidden>
@@ -79,17 +85,20 @@
         </div>
         <div class="launch-row">
           <div class="legs" id="legRow" role="group" data-i18n-aria="m_legs"></div>
-          <button class="btn launch" id="launchBtn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2M14.5 4.5C17 2 21 3 21 3s1 4-1.5 6.5L13 16l-5-5zM8 11l-3 .5L3 14l4 1M13 16l-.5 3L10 21l-1-4"/></svg><span data-i18n="b_launch">انطلق!</span></button>
+          <div class="launch-col">
+            <div class="boosts" id="boostRow" role="group" data-i18n-aria="bo_title" aria-label="المعززات" hidden></div>
+            <button class="btn launch" id="launchBtn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2M14.5 4.5C17 2 21 3 21 3s1 4-1.5 6.5L13 16l-5-5zM8 11l-3 .5L3 14l4 1M13 16l-.5 3L10 21l-1-4"/></svg><span data-i18n="b_launch">انطلق!</span></button>
+          </div>
         </div>
         <div class="menu-grid">
-          <button class="tile" type="button" data-sheet="hangar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L3.6 17.1a2 2 0 0 0 2.8 2.8l5.7-5.7a4 4 0 0 0 5.1-5.4l-2.6 2.6-2.4-.5-.5-2.4z"/></svg><span data-i18n="b_hangar">الورشة</span></button><button class="tile" type="button" data-sheet="suits"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11" r="8"/><path d="M7.5 11.5a4.5 3.6 0 0 1 9 0v.5h-9zM8 19.5V21h8v-1.5"/></svg><span data-i18n="b_suits">البدلات</span></button><button class="tile" type="button" data-sheet="missions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg><span data-i18n="b_missions">المهام</span><em class="dot" id="dotMissions" hidden></em></button><button class="tile" type="button" data-sheet="badges"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="14" r="6"/><path d="M8 3l3 5M16 3l-3 5M10.5 14l1 1 2-2.5"/></svg><span data-i18n="b_badges">الأوسمة</span></button><button class="tile" type="button" data-sheet="help"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.2v.1"/></svg><span data-i18n="b_help">كيف ألعب</span></button>
+          <button class="tile" type="button" data-sheet="hangar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L3.6 17.1a2 2 0 0 0 2.8 2.8l5.7-5.7a4 4 0 0 0 5.1-5.4l-2.6 2.6-2.4-.5-.5-2.4z"/></svg><span data-i18n="b_hangar">الورشة</span></button><button class="tile" type="button" data-sheet="costumes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11" r="8"/><path d="M7.5 11.5a4.5 3.6 0 0 1 9 0v.5h-9zM8 19.5V21h8v-1.5"/></svg><span data-i18n="b_costumes">البدلات</span></button><button class="tile" type="button" data-sheet="missions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg><span data-i18n="b_missions">المهام</span><em class="dot" id="dotMissions" hidden></em></button><button class="tile duels" type="button" data-sheet="duels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l9 9M4 4h4M4 4v4M20 4l-9 9M20 4h-4M20 4v4M7 14l3 3M17 14l-3 3M5 19l3-3M19 19l-3-3"/></svg><span data-i18n="b_duels">التحدي</span><em class="tile-lock" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></em><em class="dot" id="dotDuels" hidden></em></button><button class="tile" type="button" data-sheet="badges"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="14" r="6"/><path d="M8 3l3 5M16 3l-3 5M10.5 14l1 1 2-2.5"/></svg><span data-i18n="b_badges">الأوسمة</span></button><button class="tile" type="button" data-sheet="help"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.2v.1"/></svg><span data-i18n="b_help">كيف ألعب</span></button>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ============ sheets (hangar / suits / missions / badges / help) ============ -->
+<!-- ============ sheets (hangar / costumes / missions / duels / badges / help) ============ -->
 <div class="overlay" id="sheet" hidden>
   <div class="panel sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
     <div class="sheet-top"><h2 id="sheetTitle"></h2><div class="coinpill"><i class="coin" aria-hidden="true"></i><span class="coinVal" dir="ltr">0</span></div><button class="ghost" id="sheetClose" type="button" data-i18n="b_close">إغلاق</button></div>
@@ -99,9 +108,10 @@
 
 <!-- ============ daily login gift ============ -->
 <div class="overlay" id="loginPop" hidden>
-  <div class="panel pick">
-    <p class="pick-title" data-i18n="lg_title">هدية اليوم</p>
+  <div class="panel pick" role="dialog" aria-modal="true" aria-labelledby="lgTitle">
+    <p class="pick-title" id="lgTitle" data-i18n="lg_title">هدية اليوم</p>
     <div class="login-days" id="loginDays"></div>
+    <p class="ai-say" id="loginBot" hidden></p>
     <button class="btn" id="loginClaim" type="button"></button>
   </div>
 </div>
@@ -133,23 +143,28 @@
         <p class="postcard-fact" id="overFact" hidden></p>
       </div>
       <div class="menu-text">
-        <h2 id="overTitle"></h2>
+        <div class="over-head"><h2 id="overTitle"></h2><div class="over-stars" id="overStars" hidden></div></div>
         <p class="over-msg" id="overMsg"></p>
         <div class="score">
-          <div><b id="sScore" dir="ltr">0</b><span data-i18n="r_score">النقاط</span></div>
-          <div><b id="sKills" dir="ltr">0</b><span data-i18n="r_kills">حطّمت</span></div>
-          <div><b id="sBest" dir="ltr">0</b><span id="sBestLbl" data-i18n="r_best">الأفضل</span></div>
+          <div><b id="sScore" dir="ltr">0</b><span id="sScoreLbl">النقاط</span></div>
+          <div><b id="sKills" dir="ltr">0</b><span id="sKillsLbl">حطّمت</span></div>
+          <div><b id="sBest" dir="ltr">0</b><span id="sBestLbl">الأفضل</span></div>
         </div>
         <div class="swap" id="swap">
           <div class="swap-row">
             <p class="label" data-i18n="r_total">الدراهم</p>
             <div class="sw-box gold"><i class="coin" id="swCoinIc" aria-hidden="true"></i><b id="swCoins" dir="ltr">0</b></div>
           </div>
-          <div class="swap-parts"><span id="swPartR"></span><span id="swPartC"></span><span id="swPartB"></span></div>
+          <div class="swap-parts" id="swParts"></div>
+          <p class="sw-mult" id="swMult" hidden></p>
         </div>
         <p class="unlock-line" id="overUnlock" hidden></p>
-        <div class="mission-strip" id="overMissions"></div>
-        <div class="badge-strip" id="overBadges"></div>
+        <div class="over-chips">
+          <div class="over-extra" id="overExtra" hidden></div>
+          <div class="mission-strip" id="overMissions"></div>
+          <div class="badge-strip" id="overBadges"></div>
+        </div>
+        <p class="nudge" id="overNudge" hidden></p>
         <div class="over-actions" id="overActions">
           <button class="btn" id="nextBtn" type="button"></button>
           <button class="btn alt" id="retryBtn" type="button" data-i18n="b_retry">حاول مرة ثانية</button>
