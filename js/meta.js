@@ -259,7 +259,7 @@ const STAT0 = () => ({ rocks: 0, meteorsDodged: 0, coins: 0, supers: 0, legs: 0,
 const fresh = () => ({
   v: SCHEMA, coins: START_COINS, up: {}, suit: 'white', owned: SUITS.filter(s => !s.price && !s.badge).map(s => s.id),
   prog: {}, best: {}, stats: STAT0(), badges: {}, tiers: {}, daily: null, login: { last: null, streak: 0 },
-  settings: { muted: false, lang: 'ar', picked: false, quality: null }, seen: {}, last: null,
+  settings: { muted: false, lang: 'ar', picked: false, quality: null, fps: 60 }, seen: {}, last: null,
 });
 let S = fresh();
 function load() {

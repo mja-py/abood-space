@@ -122,6 +122,7 @@ export const STR = {
     // ---- pause ----
     pa_title: 'إيقاف مؤقت', pa_hint: 'اضغط «كمّل» أو P عشان ترجع للطيران',
     // ---- help ----
+    a_fps: 'سرعة الإطارات', fps_l: n => n === 30 ? 'توفير البطارية: 30 إطار' : 'لعب سلس: 60 إطار', fps_note: n => n === 30 ? 'توفير البطارية: 30 إطار، والتلفون يبرد أكثر' : 'لعب سلس: 60 إطار',
     help_title: 'طريقة اللعب', help_s_controls: 'التحكم', help_s_space: 'في الفضاء', help_s_ship: 'سفينتك', help_s_trips: 'الرحلات',
     help_story: 'كل رحلة لكوكب فيها ٣ مراحل. خلّص المرحلة الثالثة وتوصل الكوكب وتنفتح الرحلة الياية.',
     help_move: 'اسحب إصبعك فوق وتحت في أي مكان عشان تحرّك السفينة. على الكمبيوتر: ↑ ↓ أو W S.',
@@ -300,6 +301,7 @@ export const STR = {
     // ---- pause ----
     pa_title: 'Paused', pa_hint: 'Tap Resume or press P to fly again',
     // ---- help ----
+    a_fps: 'Frame rate', fps_l: n => n === 30 ? 'Battery saver: 30 fps' : 'Smooth: 60 fps', fps_note: n => n === 30 ? 'Battery saver: 30 fps, the phone stays cooler' : 'Smooth: 60 fps',
     help_title: 'How to play', help_s_controls: 'Controls', help_s_space: 'Out in space', help_s_ship: 'Your ship', help_s_trips: 'Journeys',
     help_story: 'Every journey to a planet has 3 legs. Finish the third leg to reach the planet and unlock the next journey.',
     help_move: 'Drag up and down anywhere to move the ship. On a computer: ↑ ↓ or W S.',

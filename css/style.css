@@ -60,6 +60,7 @@ h2{font-size:34px}
 .ghost{font:700 14px var(--display);color:var(--ink);background:var(--cream);border:2px solid var(--ink);border-radius:999px;padding:4px 14px;cursor:pointer;box-shadow:0 2px 0 var(--ink);min-height:36px}
 .ghost:active,.iconbtn:active{transform:translateY(2px);box-shadow:0 0 0 var(--ink)}
 .iconbtn{display:grid;place-items:center;width:38px;height:38px;padding:0;border-radius:50%;border:2px solid var(--ink);background:var(--cream);color:var(--ink);box-shadow:0 2px 0 var(--ink);cursor:pointer;font:800 16px var(--display);flex:none}
+.iconbtn.fpsbtn{font-size:13px;letter-spacing:-.02em}
 .iconbtn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .iconbtn[aria-pressed="true"]{background:var(--track);opacity:.8}
 .btn:focus-visible,.corner:focus-visible,.ghost:focus-visible,.iconbtn:focus-visible,.tile:focus-visible,.jcard:focus-visible,.leg:focus-visible,

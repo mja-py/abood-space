@@ -1107,24 +1107,29 @@ function hudNow() {
 // ---------------------------------------------------------------------------------------------
 // Loop: frame cap 60 in flight / 30 elsewhere, dt clamp, quality auto-downgrade
 let last = 0, fAcc = 0, fN = 0, slowWins = 0, nextDue = 0, running = false;
+// Flights run at 60 fps; the battery saver setting caps them at 30 for phones that run hot. Menus are always 30.
+let fpsCap = (() => { try { return (safe(M.settings) || {}).fps === 30 ? 30 : 60; } catch (e) { return 60; } })();
 function perf(raw) {
   if (st !== 'play' || raw > 0.1) return;
   fAcc += raw; fN++;
   if (fN >= 90) {
     const avg = fAcc / fN; fAcc = 0; fN = 0;
-    if (avg > 1 / 42) { if (++slowWins >= 2 && qLevel < QDPR.length - 1) { qLevel++; slowWins = 0; resize(); safe(A.setArtQuality, qLevel); GLOWS.clear(); SHARDS.clear(); } } else slowWins = 0;
+    // frames well over budget for the chosen rate (60 or 30 fps)
+    if (avg > 1.4 / fpsCap) { if (++slowWins >= 2 && qLevel < QDPR.length - 1) { qLevel++; slowWins = 0; resize(); safe(A.setArtQuality, qLevel); GLOWS.clear(); SHARDS.clear(); } } else slowWins = 0;
   }
 }
 function loop(now) {
   requestAnimationFrame(loop);
   const fast = st === 'play' || st === 'arrive' || st === 'dead';
-  const gap = 1000 / (fast ? 60 : 30);
+  const gap = 1000 / (fast ? fpsCap : 30);
   if (now < nextDue - 2) return;
   nextDue = now - nextDue > gap ? now + gap : nextDue + gap;
   const raw = last ? (now - last) / 1000 : 0.016; last = now;
   perf(raw);
   if (st === 'play' && safe(UI.isBlocking)) setPause(true);
-  try { update(clamp(raw, 0, 1 / 30) * debug.timeScale); } catch (e) { errOnce('update', e); }
+  // at 30 fps (or a slow frame) run two half steps, so fast meteors can't skip past the ship
+  const step = clamp(raw, 0, 1 / 20) * debug.timeScale, n = step > 1 / 45 ? 2 : 1;
+  try { for (let i = 0; i < n; i++) update(step / n); } catch (e) { errOnce('update', e); }
   try { render(); } catch (e) { errOnce('render', e); }
   hudNow();
   music();
@@ -1151,6 +1156,8 @@ const hooks = {
   onSuper() { doSuper(); },
   onMute() { unlockAudio(); setMuted(!muted); safe(M.setSetting, 'muted', muted); return muted; },
   isMuted() { return muted; },
+  onFps() { fpsCap = fpsCap === 30 ? 60 : 30; safe(M.setSetting, 'fps', fpsCap); nextDue = 0; return fpsCap; },
+  getFps() { return fpsCap; },
   sfx(name) { if (name === 'tick') sfxT('coin', 0.04, 1.3, 0.5); else if (name === 'chime') sfx.pickup(); else if (SND[name]) play(name); },
 };
 

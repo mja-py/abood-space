@@ -59,6 +59,7 @@
       <div class="pills"><div class="coinpill"><i class="coin" aria-hidden="true"></i><span class="coinVal" dir="ltr">0</span></div></div>
       <div class="tools">
         <button class="iconbtn" id="menuMute" type="button" data-i18n-aria="a_sound" aria-label="الصوت" aria-pressed="false">♪</button>
+        <button class="iconbtn fpsbtn" id="fpsBtn" type="button" data-i18n-aria="a_fps" aria-label="سرعة الإطارات">60</button>
         <button class="iconbtn" id="fsBtn" type="button" data-i18n-aria="fullscreen" aria-label="ملء الشاشة" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
         <div class="lang" role="group" aria-label="Language / اللغة"></div>
       </div>
@@ -114,7 +115,10 @@
       <button class="btn alt" id="restartBtn" type="button" data-i18n="b_replay">من جديد</button>
       <button class="btn cream" id="pauseQuit" type="button" data-i18n="b_station">للمحطة</button>
     </div>
-    <button class="ghost" id="pauseMute" type="button" aria-pressed="false"></button>
+    <div class="pause-row">
+      <button class="ghost" id="pauseMute" type="button" aria-pressed="false"></button>
+      <button class="ghost" id="pauseFps" type="button"></button>
+    </div>
     <p class="hint" data-i18n="pa_hint">اضغط «كمّل» أو P عشان ترجع للطيران</p>
   </div>
 </div>

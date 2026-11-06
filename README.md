@@ -20,6 +20,7 @@ There are no aliens: the only things in space are rocks, junk left behind in orb
 - **Meteors:** a red dashed line and a "!" warn you first, then the meteor charges. Get out of the line.
   A meteor costs 2 hull points, anything else costs 1. When the hull runs out, the ship goes down.
 - **Pause:** II, or P / Esc.
+- **60 / 30 fps:** flights run at 60 fps. If a phone gets hot, tap the **60** button on the station menu (or the frame rate button on the pause card) to switch to the 30 fps battery saver. The choice is saved on the device.
 
 ## Journeys
 Eight journeys of three legs each: Moon → Mars → Venus → Asteroid Belt → Jupiter → Saturn → Uranus → Neptune.

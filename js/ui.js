@@ -2,7 +2,7 @@
 // (hangar / suits / missions / badges / help), HUD, pause card, results card, toasts. The main canvas belongs to game.js.
 //
 // ---- exports (see docs/SPEC.md "js/ui.js exports") ----
-//   initUI(h)        h = { onLaunch(jid, li), onPause(), onResume(), onQuit(), onRetry(), onNext(), onSuper(), onMute(), isMuted(),
+//   initUI(h)        h = { onLaunch(jid, li), onPause(), onResume(), onQuit(), onRetry(), onNext(), onSuper(), onMute(), isMuted(), onFps() → 30|60, getFps(),
 //                          optional: onSelect(jid, li) (menu selection changed), sfx(name) ('tick' | 'chime' while coins count) }
 //   showMenu(), hideMenus()
 //   showHud(on, jid?, li?)   jid/li optional: ui.js already knows the leg from launch/retry/next
@@ -214,6 +214,12 @@ function syncMute() {
   for (const id of ['muteBtn', 'menuMute']) { const b = $(id); if (b) { b.textContent = m ? '✕' : '♪'; b.setAttribute('aria-pressed', m ? 'true' : 'false'); } }
   const pm = $('pauseMute'); if (pm) { pm.textContent = (m ? '✕ ' : '♪ ') + T('sound'); pm.setAttribute('aria-pressed', m ? 'true' : 'false'); }
 }
+function syncFps() {
+  const f = hook('getFps') === 30 ? 30 : 60;
+  const b = $('fpsBtn'); if (b) { b.textContent = String(f); b.title = T('fps_l', f); }
+  const p = $('pauseFps'); if (p) p.textContent = T('fps_l', f);
+}
+function doFps(e) { const f = hook('onFps'); syncFps(); note(T('fps_note', f === 30 ? 30 : 60)); if (e && e.currentTarget) e.currentTarget.blur(); }
 function doMute(e) { hook('onMute'); syncMute(); if (e && e.currentTarget) e.currentTarget.blur(); }
 
 // =============================================================================================
@@ -880,6 +886,7 @@ export function initUI(h) {
   $('sheet').addEventListener('pointerdown', e => { if (e.target === $('sheet')) closeSheet(); });
   $('loginPop').addEventListener('pointerdown', e => { if (e.target === $('loginPop')) $('loginPop').hidden = true; });
   $('menuMute').onclick = doMute; $('muteBtn').onclick = doMute; $('pauseMute').onclick = doMute;
+  $('fpsBtn').onclick = doFps; $('pauseFps').onclick = doFps; syncFps(); window.addEventListener('langchange', syncFps);
   // fullscreen (Android / desktop), also tries the landscape lock
   const fsEl = document.documentElement;
   const fsOK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen) && !STANDALONE;
