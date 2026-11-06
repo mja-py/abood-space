@@ -24,7 +24,7 @@ jobs:
       - name: Stamp build version
         run: |
           V="${GITHUB_SHA::8}"
-          sed -i "s/__BUILD__/$V/g" sw.js
+          sed -i "s/__BUILD__/$V/g" index.html sw.js js/*.js
           mkdir -p _site
           cp -r index.html sw.js manifest.webmanifest .nojekyll css js assets _site/
           # a file that still says __BUILD__ would keep a stale cache name or asset URL

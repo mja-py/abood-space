@@ -1,9 +1,9 @@
 // Abood to the Moon · عبود إلى القمر — engine: boot, loop, gameplay, particles, audio, input.
 // Drawing lives in art.js, DOM in ui.js, data/save in meta.js, text in i18n.js (see docs/SPEC.md).
-import * as M from './meta.js';
-import { T, TL, nf, lang, setLang, applyI18n } from './i18n.js';
-import * as A from './art.js';
-import * as UI from './ui.js';
+import * as M from './meta.js?v=__BUILD__';
+import { T, TL, nf, lang, setLang, applyI18n } from './i18n.js?v=__BUILD__';
+import * as A from './art.js?v=__BUILD__';
+import * as UI from './ui.js?v=__BUILD__';
 
 // ---------------------------------------------------------------------------------------------
 // Core constants and helpers
@@ -123,7 +123,7 @@ const SFX_DEF = { // name: [zzfx params, volume]
   tek: [[1, 0, 1800, 0, 0, .05, 4, 1, 0, 0, 0, 0, 0, 4, 0, 0, 0, .3, .02], .3],
 };
 async function initAudio(onProgress) {
-  try { ZZ = (await import('./vendor/zzfx.js')).ZZFX; actx = ZZ.audioContext; }
+  try { ZZ = (await import('./vendor/zzfx.js?v=__BUILD__')).ZZFX; actx = ZZ.audioContext; }
   catch (e) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e2) { actx = null; } }
   if (!actx) return;
   master = actx.createGain(); master.gain.value = muted ? 0 : 1; master.connect(actx.destination);

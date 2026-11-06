@@ -1758,7 +1758,7 @@ export async function initArt({ onProgress } = {}) {
   const steps = [];
   const prog = f => { try { onProgress && onProgress(clamp(f, 0, 1)); } catch (_) { /* ignore */ } };
   let themes = [DEF_THEME];
-  try { const M = await import('./meta.js'); if (M && Array.isArray(M.JOURNEYS)) themes = themes.concat(M.JOURNEYS.map(j => j && j.theme).filter(Boolean)); } catch (_) { /* meta not ready: bake lazily */ }
+  try { const M = await import('./meta.js?v=__BUILD__'); if (M && Array.isArray(M.JOURNEYS)) themes = themes.concat(M.JOURNEYS.map(j => j && j.theme).filter(Boolean)); } catch (_) { /* meta not ready: bake lazily */ }
   steps.push(() => { ['#ffbe64', '#ffb347', '#ff8a3d', '#ff6a2a', '#ffe6a0', '#5ef2ff', '#7fdcff', '#ffd27a', '#ffffff', '#ff3040', '#ffc83a', '#3fff7a', '#4ff7e6', '#b98cff'].forEach(glow); flareSprite(); planetShade(); rockLight(); trailSprite(); hexSprite(); beamSprites(); flameSprites(); galaxySprite(); });
   steps.push(() => starTiles());
   for (const id of PLANET_IDS) if (id !== 'belt') steps.push(() => { planetTex(id); haloSprite(id); rimSprite(id); if (PL[id].ring) ringTex(PL[id].ring); });

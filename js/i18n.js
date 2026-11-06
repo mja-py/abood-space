@@ -54,7 +54,7 @@
 // robots    bot_start bot_hit bot_meteor bot_super bot_combo bot_lowhp bot_win bot_lose bot_menu bot_arrive bot_shield
 //           bot_pickup usta_lines usta_buy usta_poor usta_max   (arrays: use TL)
 // facts     fact_earth fact_moon fact_mars fact_venus fact_belt fact_jupiter fact_saturn fact_uranus fact_neptune
-import { upValue, settings, setSetting } from './meta.js';
+import { upValue, settings, setSetting } from './meta.js?v=__BUILD__';
 
 export const nf = n => (typeof n === 'string' && n[0] === '+') ? '+' + nf(n.slice(1)) : Number(n).toLocaleString('en-US');
 const pct = v => Math.round(v * 100);

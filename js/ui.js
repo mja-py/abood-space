@@ -11,10 +11,10 @@
 //   showPause(on), showResult(r) (r = finishLeg/failLeg result + { win, jid, li, run }), note(text, ms?),
 //   loader(f, msgKeyOrText), hideLoader(), isBlocking() (portrait overlay up)
 //   extras: renderMenu(), openSheet(kind), closeSheet(), syncCoins()
-import * as M from './meta.js';
-import { T, TL, nf, lang, setLang, applyI18n } from './i18n.js';
-import * as I from './i18n.js';
-import * as A from './art.js';
+import * as M from './meta.js?v=__BUILD__';
+import { T, TL, nf, lang, setLang, applyI18n } from './i18n.js?v=__BUILD__';
+import * as I from './i18n.js?v=__BUILD__';
+import * as A from './art.js?v=__BUILD__';
 
 const $ = id => document.getElementById(id);
 const TAU = Math.PI * 2;
