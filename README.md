@@ -55,4 +55,6 @@ Then open http://localhost:8000.
 
 Every push to `main` runs `.github/workflows/pages.yml` (the same workflow as Run, Abood!). It stamps the commit id into `sw.js` and publishes the game to the `gh-pages` branch. If the site does not appear after the first deploy, open **Settings → Pages** and set **Source** to **Deploy from a branch**, branch **gh-pages**, folder **/ (root)**.
 
+Pushing a tag like `v1.0.0` runs `.github/workflows/release.yml`. It creates a GitHub release with the source zip and a single-file build of the whole game (`tools/build_single.py`), using the notes in `.github/release-notes/<tag>.md`.
+
 See [CREDITS.md](CREDITS.md) for third-party licences.

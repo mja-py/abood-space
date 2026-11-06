@@ -1,0 +1,39 @@
+name: Release
+
+# Pushing a tag like v1.0.0 creates a GitHub release with:
+#   - the full game source as a zip
+#   - the whole game bundled into one HTML file that plays offline in a browser
+# Release notes come from .github/release-notes/<tag>.md
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp build version
+        run: sed -i "s/__BUILD__/${GITHUB_REF_NAME}/g" sw.js
+
+      - name: Source zip
+        run: git archive --format=zip --prefix=abood-to-the-moon/ -o "abood-to-the-moon-${GITHUB_REF_NAME}.zip" HEAD
+
+      - name: Single-file build
+        run: |
+          npx --yes esbuild@0.24.0 js/game.js --bundle --format=iife --minify --target=es2020 --log-level=error --outfile=game.bundle.js
+          python3 tools/build_single.py . game.bundle.js body.html
+          { echo '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">'; cat body.html; echo '</html>'; } > abood-to-the-moon-single-file.html
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Abood to the Moon ${{ github.ref_name }}
+          body_path: .github/release-notes/${{ github.ref_name }}.md
+          files: |
+            abood-to-the-moon-${{ github.ref_name }}.zip
+            abood-to-the-moon-single-file.html
