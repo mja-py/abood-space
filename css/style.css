@@ -521,7 +521,26 @@ h2{font-size:34px}
 @keyframes rotPhone{0%,15%{transform:rotate(0)}45%,80%{transform:rotate(-90deg)}100%{transform:rotate(0)}}
 
 /* ---------- toasts ---------- */
-#note{position:fixed;left:50%;transform:translateX(-50%);top:calc(56px + env(safe-area-inset-top,0px));z-index:85;background:var(--ink);color:var(--cream);border:2px solid rgba(47,212,230,.6);border-radius:12px;padding:5px 14px;font-weight:700;font-size:15px;max-width:calc(100% - 32px);text-align:center;box-shadow:0 0 12px rgba(47,212,230,.3);pointer-events:none}
+/* v3: WARNING banner before a boss */
+#banner{position:fixed;left:0;right:0;top:34%;z-index:84;padding:8px 0;text-align:center;color:#fff3c4;pointer-events:none;
+  background:repeating-linear-gradient(-45deg,rgba(200,32,43,.82) 0 18px,rgba(28,21,48,.86) 18px 36px);border-top:3px solid #ffb347;border-bottom:3px solid #ffb347;
+  box-shadow:0 0 24px rgba(255,90,60,.5);font:800 26px/1.1 var(--display);letter-spacing:.08em;text-shadow:0 2px 0 var(--ink),0 0 10px rgba(255,120,60,.8)}
+#banner b{display:block;animation:bannerBlink .5s steps(2) infinite}
+#banner span{display:block;font-size:16px;letter-spacing:0;margin-top:2px;color:#fffbf2}
+#banner.in{animation:bannerIn .45s cubic-bezier(.2,1.2,.4,1) both}
+@keyframes bannerIn{0%{transform:translateX(100%);opacity:0}100%{transform:none;opacity:1}}
+@keyframes bannerBlink{0%{opacity:1}100%{opacity:.55}}
+/* v3: medals (finish, no damage, rescue, score) */
+.medals4{display:inline-flex;align-items:center;gap:4px;direction:ltr}
+.medal{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;border-radius:50%;background:var(--ink);color:#d9d1c1;font:800 9px/1 var(--display)}
+.medal::after{content:"";position:absolute;inset:2px;border-radius:50%;background:#d9d1c1}
+.medal.on::after{background:radial-gradient(circle at 40% 35%,#fff3b0,var(--gold) 60%)}
+.medal::before{position:relative;z-index:1;color:var(--ink)}
+.medal.m-finish::before{content:"✓"} .medal.m-noDamage::before{content:"♥"} .medal.m-rescue::before{content:"☺"} .medal.m-score::before{content:"★"}
+.medals4.big{gap:6px;margin-top:4px} .medals4.big .medal{width:26px;height:26px;font-size:14px}
+.medal.new{animation:starPop .6s cubic-bezier(.2,1.7,.4,1) both}
+#note{position:fixed;
+left:50%;transform:translateX(-50%);top:calc(56px + env(safe-area-inset-top,0px));z-index:85;background:var(--ink);color:var(--cream);border:2px solid rgba(47,212,230,.6);border-radius:12px;padding:5px 14px;font-weight:700;font-size:15px;max-width:calc(100% - 32px);text-align:center;box-shadow:0 0 12px rgba(47,212,230,.3);pointer-events:none}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:84;background:var(--cream);border:2px solid var(--ink);border-radius:14px;box-shadow:0 3px 0 var(--ink);
   padding:6px 8px 6px 14px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;max-width:calc(100% - 32px)}
 [dir="rtl"] #toast{padding:6px 14px 6px 8px}
@@ -583,4 +602,4 @@ h2{font-size:34px}
   .super-ring{-webkit-mask:radial-gradient(circle,transparent 28px,#000 29px);mask:radial-gradient(circle,transparent 28px,#000 29px)} }
 @media (prefers-reduced-motion:reduce){ .panel{animation:none} #loader{transition:none} .unlock-line{animation:none} .hull.low,.hull.flash,.hull i.lost{animation:none}
   .super.full::after{animation:none;transform:none;opacity:.8} .rot-g{animation:none;transform:rotate(-90deg)} .ai-tag::before{animation:none} .stat.pop,.pop,.combo.pop{animation:none} .ai-txt{transition:none}
-  .star.new,.banner,.day-chip.on,.rival-bar.hit{animation:none} }
+  .star.new,.medal.new,.banner,.day-chip.on,.rival-bar.hit,#banner.in,#banner b{animation:none} }

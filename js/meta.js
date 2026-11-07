@@ -96,7 +96,7 @@
 //   loginReady() -> bool
 
 const KEY = 'abood-moon-v1';
-export const SCHEMA = 2;
+export const SCHEMA = 3;
 const pad = n => String(n).padStart(2, '0');
 export const today = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
 const dayNo = s => Math.round(new Date(s + 'T12:00:00').getTime() / 864e5);
@@ -188,6 +188,26 @@ export const JOURNEYS = [
 export const journeyIndex = jid => JOURNEYS.findIndex(j => j.id === jid);
 export const journey = jid => JOURNEYS[journeyIndex(jid)] || null;
 export const leg = (jid, li) => { const j = journey(jid); return (j && j.legs[li]) || null; };
+
+// ---- v3: assist profiles ----
+// Read by game.js every flight (legPlan().assist). Moon is for the youngest pilots: nothing can hurt the ship, bumps only
+// wobble it, the boss cannot hurt. Mars heals itself and respawns in place. From Venus on the hull is real.
+//   noDamage      hits only bump the ship (no hull loss, no fail)           bossHarmless  the boss's shots and rams only bump
+//   regenShield   a shield that comes back after that many s without a hit  respawn       at 0 hull the ship respawns in place
+//   bigHitbox     bolts hit objects this much further away                   hurtScale     the hull's own hitbox, × this
+//   autoAim       bolts bend towards the nearest object                       speedScale    object and meteor speed, × this
+//   warnPlus      added to every warning (meteors, lasers)                    bossAtk       boss attack intervals, × this
+export const ASSIST = {
+  moon: { noDamage: true, bigHitbox: 1.6, hurtScale: 0.6, autoAim: true, bossHarmless: true, speedScale: 0.85, warnPlus: 0.8, bossAtk: 1.6, label: 'toddler' },
+  mars: { regenShield: 6, respawn: true, bigHitbox: 1.3, hurtScale: 0.8, speedScale: 0.95, warnPlus: 0.4, bossAtk: 1.25, label: 'kid' },
+  venus: { bigHitbox: 1.15, warnPlus: 0.15, bossAtk: 1.1 },
+  belt: { bigHitbox: 1.05 },
+  jupiter: {},
+  saturn: { warnPlus: -0.05 },
+  uranus: { warnPlus: -0.1 },
+  neptune: { warnPlus: -0.1 },
+};
+for (const j of JOURNEYS) j.assist = ASSIST[j.id] || {};
 
 // Drops for game.js: chance that a destroyed thing drops one coin (× the leg's `coin`), crystal rocks drop 2..4 coins
 // worth 2 each, the chance of a power-up (× the leg's `pick`) and its weights; in duels 3 coins per 10% of rival HP.
@@ -339,6 +359,136 @@ export const RIVALS = [
         atk: [{ k: 'aim', every: 1.8, v: 320, n: 3, gap: 0.12 }, { k: 'wall', every: 5, v: 190, gap: 90 }, { k: 'ram', every: 10, v: 700, back: 320 }] }] },
 ];
 
+// ---- v3: guardians (small bosses that end legs 1 and 2 of a journey) ----
+// Same shape as RIVALS so game.js runs them with the duel machine; `art` is the rival body they borrow, `s` its scale.
+const G = (id, art, s, hp, r, par, move, phases, more = {}) =>
+  Object.assign({ id, art, s, hp, r, par, coins: 0, guardian: true, diff: 0, unlock: null, theme: null, move, phases }, more);
+export const GUARDIANS = {
+  moon: [
+    G('g_moon_a', 'khurda', 0.7, 60, 24, 20, { mode: 'sine', amp: 70, period: 7 }, [{ at: 1, atk: [{ k: 'summon', every: 5, n: 1, kinds: ['rockS'] }] }]),
+    G('g_moon_b', 'bubolt', 0.7, 85, 24, 22, { mode: 'sine', amp: 90, period: 6 }, [{ at: 1, atk: [{ k: 'aim', every: 3.2, v: 150 }, { k: 'summon', every: 6, n: 1, kinds: ['rockS'] }] }]),
+  ],
+  mars: [
+    G('g_mars_a', 'khurda', 0.75, 150, 26, 24, { mode: 'sine', amp: 100, period: 6 }, [{ at: 1, atk: [{ k: 'aim', every: 2.6, v: 180 }] }, { at: 0.5, atk: [{ k: 'fan', every: 3, v: 180, n: 3, arc: 0.35 }] }]),
+    G('g_mars_b', 'bubolt', 0.75, 190, 26, 25, { mode: 'track', v: 70, offset: 50 }, [{ at: 1, atk: [{ k: 'aim', every: 2.4, v: 200, n: 2 }] }, { at: 0.5, atk: [{ k: 'aim', every: 2.4, v: 200, n: 2 }, { k: 'summon', every: 7, n: 1, kinds: ['drone'] }] }]),
+  ],
+  venus: [
+    G('g_venus_a', 'zannana', 0.8, 280, 20, 25, { mode: 'hop', every: 2.2, v: 220 }, [{ at: 1, atk: [{ k: 'aim', every: 1.4, v: 280, shot: 'dart' }] }, { at: 0.5, atk: [{ k: 'aim', every: 1.3, v: 280, shot: 'dart', n: 2, gap: 0.14 }] }]),
+    G('g_venus_b', 'bubolt', 0.8, 340, 28, 26, { mode: 'track', v: 80, offset: 40 }, [{ at: 1, atk: [{ k: 'aim', every: 2.2, v: 240, n: 2 }] }, { at: 0.5, atk: [{ k: 'wall', every: 6, v: 160, gap: 110 }, { k: 'aim', every: 2.4, v: 240 }] }]),
+  ],
+  belt: [
+    G('g_belt_a', 'magna', 0.8, 400, 30, 26, { mode: 'sine', amp: 90, period: 7 }, [{ at: 1, atk: [{ k: 'fan', every: 2.8, v: 210, n: 3, arc: 0.5 }] }, { at: 0.5, atk: [{ k: 'fan', every: 2.4, v: 210, n: 5, arc: 0.6 }] }], { plates: { n: 2, hp: 5, r: 13, orbit: 50, w: 1.4, respawn: 8 } }),
+    G('g_belt_b', 'kabeer', 0.7, 460, 32, 28, { mode: 'sine', amp: 60, period: 9 }, [{ at: 1, atk: [{ k: 'summon', every: 4.5, n: 2, kinds: ['rockM', 'rockL'] }] }, { at: 0.5, atk: [{ k: 'summon', every: 4.5, n: 2, kinds: ['rockM', 'tank'] }, { k: 'aim', every: 2.2, v: 240 }] }]),
+  ],
+  jupiter: [
+    G('g_jupiter_a', 'radar', 0.8, 520, 30, 28, { mode: 'hop', every: 3.2, v: 150 }, [{ at: 1, atk: [{ k: 'laser', every: 5, warn: 1.3, dur: 0.5 }] }, { at: 0.5, atk: [{ k: 'laser', every: 4.5, warn: 1.3, dur: 0.5 }, { k: 'aim', every: 1.8, v: 250 }] }]),
+    G('g_jupiter_b', 'zannana', 0.9, 600, 22, 28, { mode: 'hop', every: 1.8, v: 280 }, [{ at: 1, atk: [{ k: 'aim', every: 1.1, v: 320, shot: 'dart' }] }, { at: 0.5, atk: [{ k: 'aim', every: 1.1, v: 320, shot: 'dart', n: 2, gap: 0.12 }, { k: 'ram', every: 9, warn: 1.1, v: 620, back: 300 }] }]),
+  ],
+  saturn: [
+    G('g_saturn_a', 'ghummaid', 0.85, 640, 26, 28, { mode: 'blink', every: 3.4, tell: 0.55 }, [{ at: 1, atk: [{ k: 'fan', onBlink: true, v: 250, n: 3, arc: 0.4 }] }, { at: 0.5, atk: [{ k: 'fan', onBlink: true, v: 250, n: 3, arc: 0.4 }, { k: 'mine', every: 8, v: 100, turn: 1.5, life: 6 }] }]),
+    G('g_saturn_b', 'magna', 0.9, 720, 32, 30, { mode: 'sine', amp: 100, period: 6 }, [{ at: 1, atk: [{ k: 'fan', every: 2.4, v: 230, n: 5, arc: 0.6 }] }, { at: 0.5, atk: [{ k: 'fan', every: 2.2, v: 230, n: 5, arc: 0.6 }, { k: 'aim', every: 1.8, v: 260 }, { k: 'pulse', every: 11, dur: 2 }] }], { plates: { n: 3, hp: 6, r: 13, orbit: 56, w: 1.4, respawn: 7 } }),
+  ],
+  uranus: [
+    G('g_uranus_a', 'dawwama', 0.85, 780, 30, 30, { mode: 'sine', amp: 110, period: 8 }, [{ at: 1, atk: [{ k: 'spiral', on: 2.5, off: 2.2, rate: 0.26, step: 0.45, v: 190 }] }, { at: 0.5, atk: [{ k: 'spiral', on: 2.5, off: 2.2, rate: 0.26, step: 0.45, v: 190 }, { k: 'aim', every: 2.6, v: 280 }] }]),
+    G('g_uranus_b', 'radar', 0.9, 860, 32, 30, { mode: 'hop', every: 2.8, v: 170 }, [{ at: 1, atk: [{ k: 'laser', every: 4.2, warn: 1.1, dur: 0.6 }, { k: 'aim', every: 1.6, v: 260 }] }, { at: 0.5, atk: [{ k: 'lanes3', every: 5.5 }, { k: 'aim', every: 1.8, v: 260 }] }]),
+  ],
+  neptune: [],   // Neptune's three legs end with Scrap King, Anvil and Zero
+};
+export function guardian(id) { for (const k in GUARDIANS) { const g = GUARDIANS[k].find(x => x.id === id); if (g) return g; } return null; }
+export const boss = id => RIVALS.find(r => r.id === id) || guardian(id) || null;
+// which boss ends a leg: leg 3 = the journey's rogue ship (Neptune: one per leg), legs 1-2 = a guardian
+const BOSS_OF = { neptune: ['kabeer', 'sindan', 'sifr'] };
+export function bossOf(jid, li) {
+  const j = journeyIndex(jid); if (j < 0 || !(li >= 0 && li <= 2)) return null;
+  const fixed = BOSS_OF[jid]; if (fixed) return { kind: 'rival', id: fixed[li] };
+  if (li === 2) return { kind: 'rival', id: RIVALS[j].id };
+  const g = (GUARDIANS[jid] || [])[li]; return g ? { kind: 'guardian', id: g.id } : null;
+}
+
+// ---- v3: leg plans (scripted timelines) ----
+// A leg is no longer a timer with random spawns: legPlan(jid, li) builds a ~130 s timeline of beats (waves, showers,
+// meteor windows, relief, set pieces, rescue pods, a WARNING and the boss) from the journey's flavour and the leg's
+// tuning row in LEGS. The timer freezes while the boss is on screen; the leg ends when the boss is fixed.
+//   beat kinds: filler {dur, rate, mix?}  shower {kind, n, over, lanes?}  meteors {dur, gap:[a,b], pair}  meteorsOff {dur}
+//               relief {pick, n}  wave {form:'line'|'wall'|'squad'|'turrets'|'tether', n, gap}  event {ev, dur}  pods {n, over}
+//               say {key}  warn {boss}  boss {id, scale, final}
+// FLAV: what each leg introduces (intro kinds) and the set pieces its waves use.
+const FLAV = {
+  moon:    { intro: [['rockS'], ['tank'], ['rockL']], waveA: ['line', 'line', 'wall'], mid: ['scrapRain', 'wall', 'cascade'], waveB: ['line', 'wall', 'line'], twist: ['cascade', 'scrapRain', 'cascade'] },
+  mars:    { intro: [['drone'], ['panel'], ['tank']], waveA: ['squad', 'wall', 'squad'], mid: ['cascade', 'scrapRain', 'tether'], waveB: ['wall', 'squad', 'wall'], twist: ['scrapRain', 'cascade', 'grabber'] },
+  venus:   { intro: [['turret'], ['tank'], ['drone']], waveA: ['turrets', 'squad', 'wall'], mid: ['flare', 'tether', 'cascade'], waveB: ['squad', 'turrets', 'squad'], twist: ['grabber', 'flare', 'corridor'] },
+  belt:    { intro: [['rockL'], ['crystal'], ['tank']], waveA: ['wall', 'cascade', 'wall'], mid: ['cascade', 'corridor', 'cascade'], waveB: ['squad', 'wall', 'turrets'], twist: ['corridor', 'cascade', 'grabber'] },
+  jupiter: { intro: [['ice'], ['turret'], ['drone']], waveA: ['squad', 'turrets', 'tether'], mid: ['tether', 'flare', 'squad'], waveB: ['turrets', 'squad', 'wall'], twist: ['flare', 'grabber', 'corridor'] },
+  saturn:  { intro: [['ice'], ['tank'], ['drone']], waveA: ['squad', 'wall', 'turrets'], mid: ['cascade', 'tether', 'grabber'], waveB: ['wall', 'squad', 'turrets'], twist: ['corridor', 'flare', 'cascade'] },
+  uranus:  { intro: [['ice'], ['turret'], ['tank']], waveA: ['turrets', 'squad', 'wall'], mid: ['flare', 'corridor', 'tether'], waveB: ['squad', 'turrets', 'squad'], twist: ['grabber', 'cascade', 'flare'] },
+  neptune: { intro: [['ice'], ['drone'], ['tank']], waveA: ['squad', 'turrets', 'wall'], mid: ['tether', 'grabber', 'corridor'], waveB: ['turrets', 'squad', 'squad'], twist: ['flare', 'cascade', 'corridor'] },
+};
+export const LEG_BASE = 130;         // seconds before the boss (+5 per leg index)
+export const HARD = { hp: 1.35, speed: 1.15, warn: -0.2, pay: 2 };
+const EVENTS = ['cascade', 'flare', 'corridor', 'grabber', 'scrapRain'];
+function piece(name, t, j, li, D) {
+  if (EVENTS.includes(name)) return [{ t, kind: 'event', ev: name, dur: name === 'scrapRain' ? 9 : name === 'corridor' ? 14 : name === 'flare' ? 8 : 6 }];
+  if (name === 'line') return [{ t, kind: 'shower', kind2: 'rockS', n: 5 + j, over: 4, lanes: 5 }];
+  if (name === 'wall') return [{ t, kind: 'wave', form: 'wall', n: 1 + Math.floor(j / 3), gap: 150 - j * 6 }];
+  if (name === 'squad') return [{ t, kind: 'wave', form: 'squad', n: 4 + Math.min(3, Math.floor(j / 2)) }];
+  if (name === 'turrets') return [{ t, kind: 'wave', form: 'turrets', n: j < 4 ? 1 : 2 }];
+  if (name === 'tether') return [{ t, kind: 'wave', form: 'tether', n: 1 + Math.floor(j / 4) }];
+  return [];
+}
+const PLANS = {};
+export function legPlan(jid, li, hard = false) {
+  const j = journeyIndex(jid); if (j < 0 || !(li >= 0 && li <= 2)) return null;
+  const key = jid + ':' + li + (hard ? ':h' : '');
+  if (PLANS[key]) return PLANS[key];
+  const J = JOURNEYS[j], L = J.legs[li], F = FLAV[jid] || FLAV.moon;
+  const D = LEG_BASE + 5 * li, r = f => Math.round(f * D);
+  const assist = hard ? {} : Object.assign({}, J.assist || {});
+  const speedScale = (assist.speedScale || 1) * (hard ? HARD.speed : 1);
+  const warnPlus = (assist.warnPlus || 0) + (hard ? HARD.warn : 0);
+  const gapMul = li === 0 ? 1 : 0.9;
+  const meteor = L.meteor ? [L.meteor[0] * gapMul, L.meteor[1] * gapMul] : null;
+  const intro = {}; for (const k of F.intro[li] || ['rockS']) intro[k] = 1; intro.rockS = (intro.rockS || 0) + 0.6;
+  const beats = [];
+  // introduce: a calm start that shows the leg's new thing
+  beats.push({ t: 1, kind: 'filler', dur: r(0.1) - 1, rate: 0.55, mix: intro });
+  beats.push({ t: 0, kind: 'meteorsOff', dur: j === 0 ? r(0.34) : r(0.1) });
+  // wave block A
+  beats.push(...piece(F.waveA[li], r(0.1), j, li, D));
+  beats.push({ t: r(0.1), kind: 'filler', dur: r(0.17), rate: 0.85 });
+  beats.push({ t: r(0.15), kind: 'pods', n: 1, over: 1 });
+  // relief
+  beats.push({ t: r(0.27), kind: 'filler', dur: r(0.07), rate: 0 });
+  beats.push({ t: r(0.27), kind: 'event', ev: 'scrapRain', dur: r(0.07) - 1 });
+  // develop: mixed filler with a meteor window
+  beats.push({ t: r(0.34), kind: 'filler', dur: r(0.21), rate: 1 });
+  if (meteor) beats.push({ t: r(0.34), kind: 'meteors', dur: r(0.21), gap: [meteor[0] * 0.85, meteor[1] * 0.85], pair: L.pair || 0 });
+  beats.push({ t: r(0.44), kind: 'pods', n: 1, over: 1 });
+  // the middle set piece
+  beats.push({ t: r(0.55), kind: 'filler', dur: r(0.13), rate: 0.35 });
+  beats.push(...piece(F.mid[li], r(0.55) + 1, j, li, D));
+  // wave block B
+  beats.push({ t: r(0.68), kind: 'filler', dur: r(0.17), rate: 1.15 });
+  beats.push(...piece(F.waveB[li], r(0.68) + 1, j, li, D));
+  beats.push({ t: r(0.75), kind: 'pods', n: 1, over: 1 });
+  // the twist
+  beats.push({ t: r(0.85), kind: 'filler', dur: r(0.1), rate: 0.5 });
+  beats.push(...piece(F.twist[li], r(0.85) + 1, j, li, D));
+  // calm, WARNING, boss
+  beats.push({ t: r(0.95), kind: 'filler', dur: D, rate: 0 });
+  beats.push({ t: r(0.95), kind: 'meteorsOff', dur: D });
+  beats.push({ t: r(0.95) + 1, kind: 'relief', pick: 'repair', n: 1 });
+  const B = bossOf(jid, li);
+  if (B) {
+    beats.push({ t: D - 4, kind: 'warn', boss: B.id });
+    beats.push({ t: D - 0.5, kind: 'boss', id: B.id, kind2: B.kind, scale: hard ? HARD.hp : 1, final: true });
+  }
+  beats.sort((a, b) => a.t - b.t);
+  const star = Math.round(L.star * (D / L.dur) * 1.15 / 50) * 50;
+  const plan = { jid, li, hard: !!hard, dur: D, star, speedScale, warnPlus, assist, hpMul: (L.hp > 0 ? L.hp : 1) * (hard ? HARD.hp : 1),
+    beats, rescueTotal: 3, boss: B, bossAtk: assist.bossAtk || 1 };
+  PLANS[key] = plan; return plan;
+}
+
 // ---- badges ----
 // tiered: bronze -> silver -> gold, each a bigger goal with a bigger reward (golds land around days 55-75)
 export const TIER_REWARD = [20, 200, 2000];
@@ -403,10 +553,11 @@ const WELCOME_DAYS = 3;
 // ---- the save ----
 const STAT0 = () => ({ rocks: 0, meteorsDodged: 0, coins: 0, supers: 0, legs: 0, planets: 0, runs: 0, noHit: 0, deaths: 0,
   hits: 0, crystals: 0, junk: 0, tanks: 0, pickups: 0, score: 0, bought: 0, streak: 0, spent: 0, earned: 0,
-  missions: 0, duelWins: 0, duelLosses: 0, chain: 0, botKills: 0, fullHull: 0, beamKills: 0, stars: 0, mozahRuns: 0 });
+  missions: 0, duelWins: 0, duelLosses: 0, chain: 0, botKills: 0, fullHull: 0, beamKills: 0, stars: 0, mozahRuns: 0,
+  rescued: 0, bumps: 0, bossesFixed: 0, medals: 0 });
 const fresh = () => ({
   v: SCHEMA, coins: START_COINS, up: {}, char: 'abood', wear: Object.assign({}, START_WEAR), owned: COLOR_IDS.slice(),
-  skin: 'falak', skins: ['falak'], prog: {}, best: {}, stars: {}, stats: STAT0(), badges: {}, tiers: {},
+  skin: 'falak', skins: ['falak'], prog: {}, best: {}, stars: {}, medals: {}, hardOn: {}, stats: STAT0(), badges: {}, tiers: {},
   daily: null, ladder: null, duel: {}, duelDay: null, boost: BOOST0(), armed: [], away: null, welcome: null, girlSeen: false,
   login: { last: null, streak: 0 }, settings: { muted: false, lang: 'ar', picked: false, quality: null, fps: 60 }, seen: {}, last: null,
 });
@@ -415,7 +566,7 @@ let live = {};          // what track() counted during the current run
 let doneQ = [];         // missions finished since the game last asked
 let runBoost = null;    // the boosters launchBoosters() used for the current run (read at settlement)
 
-const MAPS = ['up', 'prog', 'best', 'badges', 'tiers', 'seen', 'stars', 'duel', 'wear', 'boost'];
+const MAPS = ['up', 'prog', 'best', 'badges', 'tiers', 'seen', 'stars', 'duel', 'wear', 'boost', 'medals', 'hardOn'];
 function load() {
   let raw = null, d = null;
   try {
@@ -431,8 +582,15 @@ function load() {
     for (const k of ['stats', 'settings', 'login']) S[k] = Object.assign(fresh()[k], isObj(d[k]) ? d[k] : {});
     for (const k of MAPS) if (!isObj(S[k])) S[k] = k === 'wear' ? Object.assign({}, START_WEAR) : k === 'boost' ? BOOST0() : {};
     if (v1) migrateV1(d);
+    if (!(+d.v >= 3)) migrateV2(d);
   }
   tidy();
+}
+// v2 -> v3: legs got medals (seeded from the finish star in tidy()) and the rogue ships moved into the journeys. A rival
+// already beaten in the arena stays beaten, so the journey pays nothing twice. Nothing is removed.
+function migrateV2(d) {
+  S.medals = {}; S.hardOn = {};
+  S.mig = { from: Math.max(1, +(d.v || 1)), date: today() };
 }
 // v1 -> v2: everything the player earned stays (coins, progress, upgrade levels, suits, badges, stats, today's missions).
 // Nothing was removed, so nothing needs a refund: suits are kept (and get Mozah-ready), prices only change from now on.
@@ -463,6 +621,15 @@ function tidy() {
     if (b) st[k] = b;
   }
   S.stars = st;
+  // medals (v3): known legs only, bits 1 finish | 2 no damage | 4 every pod rescued | 8 score; a finished leg has its first medal
+  const md = {};
+  for (const j of JOURNEYS) for (let li = 0; li < 3; li++) {
+    const k = j.id + ':' + li, b = (Math.floor(+S.medals[k] || 0) & 15) | (legsDone(j.id) > li ? 1 : 0);
+    if (b) md[k] = b;
+  }
+  S.medals = md;
+  const ho = {}; for (const k of Object.keys(S.hardOn)) if (journeyIndex(k) >= 0 && S.hardOn[k] && hardOpen(k)) ho[k] = true; S.hardOn = ho;
+  S.stats.medals = medalTotal();
   // duels
   const du = {};
   for (const r of RIVALS) {
@@ -722,6 +889,17 @@ export function legReward(jid, li) {
   const full = legPay(j, li); return li >= legsDone(jid) ? full : Math.round(full * REPLAY_PAY);
 }
 const bits = b => [!!(b & 1), !!(b & 2), !!(b & 4)];
+const bits4 = b => [!!(b & 1), !!(b & 2), !!(b & 4), !!(b & 8)];
+// v3 medals per leg: [finish, no damage, all pods rescued, score]; all 12 of a journey open its Hard tier
+export function legMedals(jid, li) {
+  if (journeyIndex(jid) < 0) return [false, false, false, false];
+  return bits4((S.medals[jid + ':' + li] || 0) | (legsDone(jid) > li ? 1 : 0));
+}
+export const medalsOf = jid => [0, 1, 2].reduce((a, li) => a + legMedals(jid, li).filter(Boolean).length, 0);
+export const medalTotal = () => JOURNEYS.reduce((a, j) => a + medalsOf(j.id), 0);
+export const hardOpen = jid => journeyIndex(jid) >= 0 && medalsOf(jid) >= 12;
+export const hardOn = jid => !!S.hardOn[jid] && hardOpen(jid);
+export function setHard(jid, on) { if (journeyIndex(jid) < 0 || (on && !hardOpen(jid))) return false; if (on) S.hardOn[jid] = true; else delete S.hardOn[jid]; save(); return true; }
 export function legStars(jid, li) {
   if (journeyIndex(jid) < 0) return [false, false, false];
   return bits((S.stars[jid + ':' + li] || 0) | (legsDone(jid) > li ? 1 : 0));
@@ -893,31 +1071,54 @@ export function finishLeg(jid, li, run = {}) {
     const f = endLike(run, false);
     return Object.assign(none, { picked: f.kept, total: f.kept, badges: f.badges, missions: f.missions, levelUp: f.levelUp, girl: f.girl, coinMult: f.coinMult });
   }
-  const done = legsDone(jid), first = li >= done, L = JOURNEYS[j].legs[li];
-  const reward = first ? legPay(j, li) : Math.round(legPay(j, li) * REPLAY_PAY);
+  const done = legsDone(jid), first = li >= done, hard = !!run.hard && hardOpen(jid);
+  const plan = legPlan(jid, li, hard), starGoal = plan ? plan.star : JOURNEYS[j].legs[li].star;
+  const reward = first ? legPay(j, li) : Math.round(legPay(j, li) * REPLAY_PAY * (hard ? HARD.pay : 1));
   const journeyDone = first && li === 2;
   const bonus = journeyDone ? journeyBonus(j) : 0;
   const picked = Math.round(num(run.coins) * cm);
   // stars: 1 finish, 2 hull >= 60% at the end, 3 score >= the leg's star score
   const key = jid + ':' + li, had = (S.stars[key] || 0) | (done > li ? 1 : 0);
-  const now = 1 | (+run.maxHp > 0 && +run.hpEnd / +run.maxHp >= STAR_HULL ? 2 : 0) | (num(run.score) >= L.star ? 4 : 0);
+  const now = 1 | (+run.maxHp > 0 && +run.hpEnd / +run.maxHp >= STAR_HULL ? 2 : 0) | (num(run.score) >= starGoal ? 4 : 0);
   const fresh3 = now & ~had, newStars = [0, 1, 2].filter(i => fresh3 & (1 << i));
   const starPay = newStars.filter(i => i > 0).length * Math.round(STAR_PAY * legPay(j, li));
   S.stars[key] = had | now;
+  // medals (v3): 1 finish, 2 no damage at all (no hits, no bumps), 4 every rescue pod picked up, 8 score; new ones pay like stars
+  const hadM = (S.medals[key] || 0) | (done > li ? 1 : 0);
+  const noDmg = num(run.hits) === 0 && num(run.bumps) === 0, podsAll = +run.rescueTotal > 0 && num(run.rescued) >= +run.rescueTotal;
+  const nowM = 1 | (noDmg ? 2 : 0) | (podsAll ? 4 : 0) | (num(run.score) >= starGoal ? 8 : 0);
+  const freshM = nowM & ~hadM, newMedals = [0, 1, 2, 3].filter(i => freshM & (1 << i));
+  const medalPay = newMedals.filter(i => i === 1 || i === 2).length * Math.round(STAR_PAY * legPay(j, li));
+  S.medals[key] = hadM | nowM;
+  S.stats.rescued += num(run.rescued); S.stats.bumps += num(run.bumps);
+  // bosses fixed inside this leg (v3): a rogue ship counts as beaten in the arena too; its first win pays its prize once
+  let bossReward = 0, bossUnlock = null; const bossFixed = [];
+  for (const rid of Array.isArray(run.bossFixed) ? run.bossFixed : []) {
+    const R = rival(rid); S.stats.bossesFixed += 1;
+    if (!R) continue;
+    bossFixed.push(rid);
+    const d = duelRec(rid), firstB = !d.beaten, time = +run.bossTime > 0 ? +run.bossTime : 0;
+    const nowB = 1 | (+run.maxHp > 0 && +run.hpEnd / +run.maxHp >= DUEL_STAR_HULL ? 2 : 0) | (time > 0 && time <= R.par ? 4 : 0);
+    S.duel[rid] = { beaten: d.beaten || today(), wins: d.wins + 1, stars: d.stars | nowB, best: time > 0 && (d.best == null || time < d.best) ? r2(time, 1) : d.best };
+    S.stats.duelWins += 1; addKind('duelWin', 1);
+    if (firstB) { grant(R.unlock[0], R.unlock[1]); bossUnlock = { kind: R.unlock[0], id: R.unlock[1] }; bossReward += R.coins; }
+  }
   settle(run);
   if (first) S.prog[jid] = Math.max(done, li + 1);
   const noHit = !!run.noHit || (run.hits != null && num(run.hits) === 0), full = fullHullOf(run);
   S.stats.legs += 1; if (noHit) S.stats.noHit += 1; if (full) S.stats.fullHull += 1; if (li === 2) S.stats.planets += 1;
   addKind('legs', 1); if (noHit) addKind('noHit', 1); if (full) addKind('fullHull', 1); if (li === 2) addKind('planet', 1);
-  pay(reward + bonus + picked + starPay);
+  pay(reward + bonus + picked + starPay + medalPay + bossReward);
   S.last = { jid, li };
   const b = bestOf(jid, run);
   const nx = JOURNEYS[j + 1];
   const unlocked = journeyDone && nx && isUnlocked(nx.id) ? nx.id : null;
   const gate = journeyDone && nx && !unlocked ? (n => ({ jid: nx.id, need: n.need, have: n.have, left: n.need - n.have }))(journeyNeed(nx.id)) : null;
   const c = close();
-  return { reward, bonus, picked, total: reward + bonus + picked + starPay, journeyDone, unlocked, first, newBest: b.newBest, best: b.best,
-    badges: c.badges, missions: c.missions, stars: bits(S.stars[key]), newStars, starPay, coinMult: cm, levelUp: c.levelUp, girl: c.girl, gate, played: true };
+  return { reward, bonus, picked, total: reward + bonus + picked + starPay + medalPay + bossReward, journeyDone, unlocked, first, newBest: b.newBest, best: b.best,
+    badges: c.badges, missions: c.missions, stars: bits(S.stars[key]), newStars, starPay, coinMult: cm, levelUp: c.levelUp, girl: c.girl, gate, played: true,
+    medals: bits4(S.medals[key]), newMedals, medalPay, bossReward, bossUnlock, bossFixed, hard, hardOpen: hardOpen(jid), star: starGoal };
+
 }
 // a failed (or abandoned) leg: the picked coins are kept
 function endLike(run, death, jid, li) {

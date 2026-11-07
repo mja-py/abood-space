@@ -83,6 +83,7 @@ let comboN = 0, comboT = 0, mult = 1, lastMult = 1;
 let lastWin = false, lastRun = null;
 let menuO = { friends: [], char: 'abood', costume: null }, menuOT = -1;
 const debug = { invincible: false, timeScale: 1, noSpawn: false, noAttack: false };
+const retries = {};      // v3 hidden assist: deaths per leg key this session (2+ → slower, +1 hull, a shield)
 
 // ---------------------------------------------------------------------------------------------
 // Device integration
@@ -456,8 +457,13 @@ function newRun(o) {
     score: 0, kills: 0, coins: 0, hits: 0, meteors: 0, supers: 0,
     comboMax: 0, beamMax: 0, beamKills: 0, crystals: 0, chain: 0, botKills: 0, pickups: 0,
     hitTimes: [], mercyT: 0, coinChain: 0, coinChainT: 0, deadT: 0, lowSaid: false, regenT: 0, starSaid: false, boost: {},
+    // v3: the scripted timeline (DESIGN-v3), the boss inside a leg, assist and medal counters
+    plan: null, beats: [], bi: 0, windows: [], pend: [], fseq: 0, fillerMul: 1, mixNow: null, meteorNow: null, pairNow: null, meteorsOff: 0,
+    boss: null, frozen: false, ds: null, R: null, rid: null, rescued: 0, rescueTotal: 0, bumps: 0, deaths: 0, bossFixed: [], bossTime: 0,
+    AS: {}, hard: false, easy: false, extraHull: 0, startShield: false, held: null,
   }, o);
 }
+const shieldCd = () => (S && S.shieldCd > 0) ? S.shieldCd : (run && run.AS && run.AS.regenShield > 0) ? run.AS.regenShield : 0;
 function resetWorld() {
   objs.length = meteors.length = bolts.length = picks.length = parts.length = texts.length = lasers.length = 0;
   eshots.length = emobs.length = elasers.length = 0;
@@ -471,9 +477,10 @@ function beginRun() {
   const B = Object.assign({ shield: false, super: false, hull: false, coins: false }, safe(M.launchBoosters) || {});
   run.boost = B;
   if (B.hull) S.maxHp += 1;
+  if (run.extraHull > 0) S.maxHp += run.extraHull;   // v3 hidden assist after repeated deaths
   safe(M.startRun);
   ship = { x: SHIP_X, y: 210, ty: 210, py: 210, vy: 0, tilt: 0, hp: S.maxHp, maxHp: S.maxHp, inv: 0, alive: true,
-    shieldUp: S.shieldCd > 0, shieldT: 0, extraShield: B.shield ? 1 : 0, fireT: 0.3, rapidT: 0, sc: 1, vx: 0, thrust: 0.6 };
+    shieldUp: shieldCd() > 0 || !!run.startShield, shieldT: 0, extraShield: B.shield ? 1 : 0, fireT: 0.3, rapidT: 0, sc: 1, vx: 0, thrust: 0.6 };
   bot = { x: SHIP_X - 60, y: 160, vx: 0, vy: 0, mood: 'normal', moodT: 0, say: '', sayT: 0, sayMax: 1, lastSay: -99, zapT: 1, startSay: 0.9 };
   superF = B.super ? 1 : clamp(S.superStart || 0, 0, 1); superWasFull = false; beamT = 0; beamMax = Math.max(0.5, S.superDur || 2.2);
   comboN = 0; comboT = 0; mult = 1; lastMult = 1; scroll = 0; shakeA = 0; hitStop = 0; flashA = 0; arrive = null;
@@ -499,19 +506,28 @@ function start(jid, li = 0) {
     if (safe(M.canPlay, jid, d)) li = d; else { console.warn('journey locked', jid); return false; }
   }
   abandon();
-  const L = J.legs[li];
+  const L0 = J.legs[li];
   resetWorld();
-  run = newRun({ mode: 'leg', jid, ji, li, J, L, last: li === J.legs.length - 1, spawnT: 1.6, nextMeteor: L.firstMeteor != null ? L.firstMeteor : 20 });
+  // v3: the leg plan (timeline, assist profile, boss) from meta.js; the leg's tuning row is scaled by it
+  const hard = !!safe(M.hardOn, jid);
+  const plan = safe(M.legPlan, jid, li, hard) || null;
+  const AS = (plan && plan.assist) || {};
+  const rk = jid + ':' + li, easy = (retries[rk] || 0) >= 2;   // hidden assist: slower, +1 hull and a shield after two deaths
+  const sp = (plan ? plan.speedScale : 1) * (easy ? 0.85 : 1);
+  const L = Object.assign({}, L0, { dur: plan ? plan.dur : L0.dur, speed: L0.speed * sp, mv: (L0.mv > 0 ? L0.mv : 950) * sp, star: plan ? plan.star : L0.star });
+  run = newRun({ mode: 'leg', jid, ji, li, J, L, last: li === J.legs.length - 1, spawnT: 1.6, nextMeteor: L.firstMeteor != null ? L.firstMeteor : 20,
+    plan, beats: plan ? plan.beats.slice() : [], AS, hard, easy, extraHull: easy ? 1 : 0, startShield: easy, rescueTotal: plan ? plan.rescueTotal : 0 });
   beginRun();
   // leg fields (DESIGN §4.3) and costume perks (§5)
   run.mix = Object.assign({}, L.mix || {});
   if (run.mix.crystal) run.mix.crystal *= S.crystalWeight || 1;
-  run.hpMul = L.hp > 0 ? L.hp : 1;
+  run.hpMul = plan ? plan.hpMul : L.hp > 0 ? L.hp : 1;
   run.coinMul = L.coin > 0 ? L.coin : 1;
   run.pickMul = L.pick > 0 ? L.pick : 1;
-  run.mv = L.mv > 0 ? L.mv : 950;
-  run.warn = (L.warn || 1.1) + (S.warnPlus || 0) + (S.bot.warnPlus || 0);
+  run.mv = L.mv;
+  run.warn = (L.warn || 1.1) + (S.warnPlus || 0) + (S.bot.warnPlus || 0) + (plan ? plan.warnPlus : 0);
   safe(UI.hideMenus); safe(UI.showPause, false); safe(UI.showHud, true, jid, li);
+  if (hard) safe(UI.note, tt('f_hard'));
   const legName = tt(`leg_${jid}_${li}`);
   if (legName) safe(UI.note, legName);
   return true;
@@ -628,25 +644,72 @@ function spawnKind(k, y) {
 }
 function spawner(dt) {
   if (debug.noSpawn) return;
-  const L = run.L, prog = run.elapsed / L.dur;
+  const L = run.L, prog = run.elapsed / L.dur, fm = run.fillerMul == null ? 1 : run.fillerMul;
   run.spawnT -= dt;
-  if (run.spawnT > 0) return;
-  const rate = Math.max(0.2, (L.spawn || 1) * (0.8 + 0.4 * prog) * (run.mercyT > 0 ? 0.7 : 1));
+  if (run.spawnT > 0 || fm <= 0) return;
+  const rate = Math.max(0.2, (L.spawn || 1) * (0.8 + 0.4 * prog) * (run.mercyT > 0 ? 0.7 : 1) * fm);
   run.spawnT = (1 / rate) * rnd(0.6, 1.4);
-  if (objs.length < 60) spawnKind(weighted(run.mix || L.mix || {}));
+  if (objs.length < 60) spawnKind(weighted(run.mixNow || run.mix || L.mix || {}));
 }
 function meteorSpawner() {
-  const L = run.L;
-  if (debug.noSpawn || !L.meteor || !(L.meteor[1] > 0)) return;
+  const L = run.L, gap = run.meteorNow || L.meteor, pair = run.pairNow != null ? run.pairNow : L.pair;
+  if (debug.noSpawn || !gap || !(gap[1] > 0)) return;
+  if (run.meteorsOff > 0) { run.nextMeteor = Math.max(run.nextMeteor, run.elapsed + 2); return; }
   if (run.elapsed < run.nextMeteor) return;
   if (run.elapsed + run.warn > L.dur - 1.2) { run.nextMeteor = 1e9; return; }
   spawnMeteor();
   // pair: a second meteor warns at the same moment in another lane at least 90 away
-  if (L.pair > 0 && Math.random() < L.pair) {
+  if (pair > 0 && Math.random() < pair) {
     const y0 = meteors[meteors.length - 1].y;
     for (let i = 0; i < 12; i++) { const y = rnd(Y_MIN + 6, Y_MAX - 6); if (Math.abs(y - y0) >= 90) { spawnMeteor(y, true); break; } }
   }
-  run.nextMeteor = run.elapsed + rnd(L.meteor[0], L.meteor[1]);
+  run.nextMeteor = run.elapsed + rnd(gap[0], gap[1]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// v3 timeline: beats fire at their time, windows undo themselves, pending spawns are spread over a few seconds
+function later(d, fn) { run.pend.push({ d, fn, done: false }); }
+function win(dur, undo) { run.windows.push({ left: Math.max(0.05, dur || 0), undo, done: false }); }
+function runBeats(dt) {
+  if (!run.beats || !run.beats.length) return;
+  const T = run.elapsed;
+  while (run.bi < run.beats.length && run.beats[run.bi].t <= T) { const b = run.beats[run.bi++]; try { beat(b); } catch (e) { errOnce('beat:' + b.kind, e); } }
+  for (const w of run.windows) { w.left -= dt; if (w.left <= 0) { w.done = true; if (w.undo) w.undo(); } }
+  compact(run.windows, w => !w.done);
+  for (const s of run.pend) { s.d -= dt; if (s.d <= 0) { s.done = true; s.fn(); } }
+  compact(run.pend, s => !s.done);
+  if (run.meteorsOff > 0 && run.meteorsOff < 1e8) run.meteorsOff -= dt;
+}
+const laneY = (i, n) => Y_MIN + 10 + ((i % n) + 0.5) * (Y_MAX - Y_MIN - 20) / n;
+function beat(b) {
+  switch (b.kind) {
+    case 'filler': { const seq = ++run.fseq; run.fillerMul = b.rate; run.mixNow = b.mix || null; win(b.dur, () => { if (run.fseq === seq) { run.fillerMul = 1; run.mixNow = null; } }); break; }
+    case 'meteorsOff': if (run.meteorsOff < 1e8) run.meteorsOff = Math.max(run.meteorsOff, b.dur || 0); break;
+    case 'meteors': run.meteorNow = b.gap; run.pairNow = b.pair || 0; run.nextMeteor = Math.min(run.nextMeteor, run.elapsed + rnd(2, 5)); win(b.dur, () => { run.meteorNow = null; run.pairNow = null; }); break;
+    case 'shower': { const n = b.n | 0, over = b.over || 4, lanes = b.lanes | 0, k = b.kind2 || 'rockS';
+      for (let i = 0; i < n; i++) later(i * over / Math.max(1, n), () => spawnKind(k, lanes > 0 ? laneY(i, lanes) : null)); break; }
+    case 'relief': { let k = b.pick || 'cell';
+      if (k === 'repair' && ship.hp >= ship.maxHp) k = ship.shieldUp || shieldCd() <= 0 ? (superF < 0.6 ? 'cell' : 'coins') : 'shield';
+      const n = k === 'coins' ? (b.n > 1 ? b.n : 8) : (b.n | 0) || 1;
+      for (let i = 0; i < n; i++) later(i * 0.25, () => { const p = addPick(k === 'coins' ? 'coin' : k, W + 20, clamp(ship.y + rnd(-60, 60), Y_MIN, Y_MAX), 1); if (p) { p.vx = -run.L.speed * 0.8; p.vy = 0; p.life = 20; } });
+      break; }
+    case 'say': say(b.key, true); break;
+    case 'warn': bossWarn(b.boss); break;
+    case 'boss': startBoss(b); break;
+    case 'wave': case 'event': case 'pods': setPiece(b); break;
+    default: errOnce('beat?' + b.kind, new Error('unknown beat ' + b.kind));
+  }
+}
+// phase 2 set pieces (waves, events, rescue pods) are filled in below; until then a wave is a shower of rocks
+function setPiece(b) {
+  if (typeof setPiece2 === 'function' && setPiece2(b)) return;
+  if (b.kind === 'wave') { const n = (b.n | 0) * 3 || 6; for (let i = 0; i < n; i++) later(i * 0.5, () => spawnKind(i % 3 ? 'rockS' : 'rockM', laneY(i, 5))); }
+}
+function bossWarn(id) {
+  const name = rvName(id);
+  safe(UI.banner, tt('f_warning', 'WARNING'), name, 3600);
+  sfx.warn(); sfx.rivalPhase(); mood('alert', 3.5); shake(3);
+  say(safe(M.guardian, id) ? 'bot_guardian' : 'bot_boss', true);
 }
 function spawnMeteor(y, quiet = false) {
   const warn = (run && run.warn) || 1.1;
@@ -793,7 +856,8 @@ function collect(p) {
 function shake(a) { if (!REDUCED) shakeA = Math.max(shakeA, a); }
 function hitStopMs(ms) { if (hitStopCd > 0) return; hitStop = Math.max(hitStop, ms / 1000); hitStopCd = 0.25; }
 
-const duelSafe = () => run && run.mode === 'duel' && (run.ds === 'intro' || run.ds === 'fixed');
+const duelSafe = () => run && rv && (run.ds === 'intro' || run.ds === 'fixed');
+
 // a shield pop with the shield ✦ (shieldBlast) also clears small rocks (and, in a duel, enemy shots, mines, drones) nearby
 function shieldBlast() {
   const R = S.shieldBlast || 0; if (R <= 0) return;
@@ -802,11 +866,22 @@ function shieldBlast() {
   for (const s of eshots) if (!s.dead && Math.hypot(s.x - ship.x, s.y - ship.y) < R + s.r) { s.dead = true; sparks(s.x, s.y, 3, '#9ff0ff', 90); }
   for (const m of emobs) if (!m.dead && Math.hypot(m.x - ship.x, m.y - ship.y) < R + m.r) killMob(m, 'pop');
 }
-function hurtShip(dmg) {
+// v3 assist: a bump instead of a hit (Moon: everything; the Moon boss and the Mars boss: their attacks)
+function bump(src) {
+  run.bumps++; ship.inv = 0.9;
+  sfxT('rockhit', 0.12, 0.8, 0.9); buzz(15); shake(3);
+  ring(ship.x, ship.y, 42, '#ffe066', 0.3); sparks(ship.x + 8, ship.y, 8, '#fff2b0', 120);
+  if (run.bumps === 1 || Math.random() < 0.3) { say2('f_bump', ship.x + 30, ship.y + 40, '#ffe066'); say('bot_bump'); }
+  mood('alert', 0.8);
+  return true;
+}
+function hurtShip(dmg, src = 'hit') {
   if (!ship.alive || ship.inv > 0 || debug.invincible || st !== 'play' || duelSafe()) return false;
+  const AS = run.AS || {};
+  if (AS.noDamage || (AS.bossHarmless && src === 'boss')) return bump(src);
   if (ship.extraShield > 0 || ship.shieldUp) {
     // the shield booster's extra charge goes first, then the normal shield
-    if (ship.extraShield > 0) ship.extraShield--; else { ship.shieldUp = false; ship.shieldT = S.shieldCd || 0; }
+    if (ship.extraShield > 0) ship.extraShield--; else { ship.shieldUp = false; ship.shieldT = shieldCd(); }
     ship.inv = 0.7;
     sfx.shieldpop(); ring(ship.x, ship.y, 54, '#9ff0ff', 0.4); sparks(ship.x, ship.y, 14, '#9ff0ff', 180);
     say2('f_shieldPop', ship.x + 30, ship.y + 40); say('bot_shield');
@@ -825,8 +900,19 @@ function hurtShip(dmg) {
   return true;
 }
 function die() {
-  ship.alive = false; beamT = 0;
   const x = ship.x, y = ship.y;
+  // v3 Mars assist: the ship respawns in place with a fresh shield; the leg goes on (counted for the medals)
+  if (run.AS && run.AS.respawn && run.mode !== 'duel') {
+    run.deaths++; ship.hp = ship.maxHp; ship.inv = 3; ship.shieldUp = true; ship.shieldT = 0; ship.rapidT = 0;
+    ring(x, y, 70, '#9ff0ff', 0.5); ring(x, y, 110, '#fff6c2', 0.6); sparks(x, y, 18, '#9ff0ff', 200); smoke(x, y, 4, '#5a566e');
+    play('boomL', 0.5); shake(8); flashA = REDUCED ? 0 : 0.25;
+    if (rv) clearEnemyFire();
+    for (const m of meteors) if (!m.dead && m.phase === 'go' && Math.abs(m.y - y) < 60) m.dead = true;
+    say2('f_respawn', x + 30, y + 40, '#9ff0ff'); say('bot_respawn', true); mood('alert', 2);
+    return;
+  }
+  if (run.mode !== 'duel') { const rk = run.jid + ':' + run.li; retries[rk] = (retries[rk] || 0) + 1; }
+  ship.alive = false; beamT = 0;
   explode(x, y, 34, { shard: 'metal', fire: true, ringCol: '#ffd27a' });
   for (let i = 0; i < Math.ceil(26 * FX); i++) { const a = rnd(0, TAU), v = rnd(80, 320); addP(P_FIRE, x, y, Math.cos(a) * v, Math.sin(a) * v, rnd(0.4, 0.9), rnd(10, 22), pick(['#ff8a2a', '#ffb347', '#ff5a3c'])); }
   for (let i = 0; i < 14; i++) { const a = rnd(0, TAU), v = rnd(60, 220); const p = addP(P_DEBRIS, x, y, Math.cos(a) * v, Math.sin(a) * v, rnd(1, 1.6), rnd(3, 7), pick(['#f4f2ea', '#e2552d', '#c8202b', '#8d94a8', '#3b3b46'])); if (p) p.drag = 0.6; }
@@ -834,7 +920,7 @@ function die() {
   smoke(x, y, 8, '#4d4a5e');
   play('boomL', 0.8); sfx.tank(); buzz([60, 40, 120]); shake(16); hitStop = 0.08; flashA = REDUCED ? 0 : 0.35;
   mood('sad', 9);
-  if (run.mode === 'duel') { if (!line('bot_duelLose')) say('bot_lose', true); else say('bot_duelLose', true); if (rv) rvSay(line('rv_' + rv.id + '_taunt')); }
+  if (rv) { if (!line('bot_duelLose')) say('bot_lose', true); else say('bot_duelLose', true); rvSay(line('rv_' + rv.id + '_taunt')); }
   else say('bot_lose', true);
   st = 'dead'; stT = 0; run.deadT = 0;
 }
@@ -860,7 +946,34 @@ const ER = k => (A.ENEMY_R && A.ENEMY_R[k]) || ER_DEF[k] || 6;
 function rivalData(rid) {
   const list = Array.isArray(M.RIVALS) ? M.RIVALS : [];
   if (typeof rid === 'number') return list[rid - 1] || null; // __game.duel(1..10)
-  return safe(M.rival, rid) || list.find(r => r.id === rid) || null;
+  return safe(M.rival, rid) || list.find(r => r.id === rid) || safe(M.guardian, rid) || null;
+}
+// v3: a boss inside a leg (the journey's rogue ship on leg 3, a guardian on legs 1-2). The timer freezes, the filler stops,
+// the duel machine runs the fight; once the boss is fixed the leg drains and arrives as usual.
+function startBoss(b) {
+  const R0 = rivalData(b.id); if (!R0 || rv) return false;
+  const P = run.plan || {}, k = P.bossAtk || 1, scale = b.scale || 1;
+  const R = Object.assign({}, R0, { hp: Math.round(R0.hp * scale) });
+  if (k !== 1) R.phases = (R0.phases || []).map(ph => Object.assign({}, ph, { atk: (ph.atk || []).map(a => Object.assign({}, a, a.every ? { every: a.every * k } : {}, a.off ? { off: a.off * k } : {})) }));
+  run.frozen = true; run.fillerMul = 0; run.mixNow = null; run.meteorsOff = 1e9; run.pend.length = 0;
+  run.boss = { id: R.id, final: !!b.final, guardian: !!R.guardian };
+  run.R = R; run.rid = R.id; run.ds = 'intro'; run.dsT = 0; run.fightT = 0; run.fightTime = null; run.enraged = false;
+  for (const m of meteors) m.dead = true;
+  makeRival(R);
+  bot.duelSaid = true;
+  safe(UI.setBoss, R.id);
+  mood('alert', 2.5);
+  return true;
+}
+function bossDone() {
+  if (!rv) return;
+  const id = rv.id, final = !!(run.boss && run.boss.final);
+  run.bossFixed.push(id); run.bossTime = run.fightTime != null ? run.fightTime : run.fightT;
+  rv = null; run.boss = null; run.ds = null; run.R = null; run.rid = null;
+  eshots.length = emobs.length = elasers.length = 0;
+  run.frozen = false; run.meteorsOff = 0; run.fillerMul = 1;
+  safe(UI.setBoss, null);
+  if (final) { run.elapsed = run.L.dur; run.ending = true; run.endT = 0; }
 }
 const rvName = id => tt('rv_' + id, id);
 function rvSay(s) { if (!rv || !s) return; rv.say = s; rv.sayT = rv.sayMax = 2.4; }
@@ -890,10 +1003,11 @@ function makeRival(R) {
   rv = { id: R.id, R, x: W + 80, y: 200, ty: 200, vy: 0, r: R.r || 34, hp: R.hp, max: R.hp, ph: 0, phase: P0, move: P0.move || R.move || { mode: 'sine', amp: 100, period: 6 },
     atk: [], q: [], mt: 0, bob: rnd(0, 5), hurt: 0, tell: 0, invT: 0, stunT: 0, sh: null, plates: null, plateA: 0, plateT: 0,
     blink: null, blinkT: 1.5, hopT: 0.5, trackT: 0, sign: 1, ram: null, hold: null, pulseT: 0, drops: 0, enrageSaid: false,
-    say: '', sayT: 0, sayMax: 1, alpha: 1, rot: 0, fixedEye: false, burst: false, introSaid: false, lastSafe: -1, dead: false, smokeT: 0 };
-  safe(A.bakeRival, R.id);
-  const pts = typeof A.rivalPoints === 'function' ? safe(A.rivalPoints, R.id) : null;
-  rv.mu = pts && pts.muzzle ? pts.muzzle : [-rv.r * 0.8, 0]; rv.ha = pts && pts.hatch ? pts.hatch : [-rv.r * 0.4, 0];
+    say: '', sayT: 0, sayMax: 1, alpha: 1, rot: 0, fixedEye: false, burst: false, introSaid: false, lastSafe: -1, dead: false, smokeT: 0,
+    art: R.art || R.id, s: R.s > 0 ? R.s : 1 };   // v3 guardians borrow a rival body at a smaller scale
+  safe(A.bakeRival, rv.art, rv.s);
+  const pts = typeof A.rivalPoints === 'function' ? safe(A.rivalPoints, rv.art) : null;
+  rv.mu = pts && pts.muzzle ? [pts.muzzle[0] * rv.s, pts.muzzle[1] * rv.s] : [-rv.r * 0.8, 0]; rv.ha = pts && pts.hatch ? [pts.hatch[0] * rv.s, pts.hatch[1] * rv.s] : [-rv.r * 0.4, 0];
   if (R.shield) setShield(R.shield);
   if (R.plates) { const P = R.plates; rv.plates = []; for (let i = 0; i < (P.n | 0); i++) rv.plates.push({ hp: P.hp, max: P.hp, alive: true, flash: 0, x: rv.x, y: rv.y, rot: rnd(0, TAU) }); }
   if (rv.move.mode === 'blink') rv.blinkT = (rv.move.every || 3) * 0.6;
@@ -978,7 +1092,7 @@ function updateFixed(dt) {
   }
   if (f >= 1.5 && !rv.botSaid) { rv.botSaid = true; if (line('rv_' + rv.id + '_bot')) say('rv_' + rv.id + '_bot', true); else say('bot_duelWin', true); }
   if (f > 1.8) { const g = (f - 1.8) / 0.7; rv.x += 260 * g * dt * 3; rv.y -= 90 * dt; rv.alpha = clamp(1 - g, 0, 1); } // wave and fly off
-  if (f >= 2.5) endRun(true);
+  if (f >= 2.5) { if (run.mode === 'duel') endRun(true); else bossDone(); }
 }
 function newY(from, minD) { let y = from; for (let i = 0; i < 10; i++) { y = rnd(RV_YMIN, RV_YMAX); if (Math.abs(y - from) >= minD) break; } return y; }
 function moveRival(dt) {
@@ -1073,8 +1187,8 @@ function updateRam(dt, shR) {
   else if (m.ph === 'go') { rv.x -= m.v * dt; if (Math.random() < 0.6 * FX) addP(P_FIRE, rv.x + rv.r, rv.y + rnd(-8, 8), 200, rnd(-20, 20), 0.3, 12, '#ff8a2a', 30); if (rv.x <= 150) { rv.x = 150; m.ph = 'back'; } }
   else { rv.x += m.back * dt; if (rv.x >= home) { rv.x = home; rv.ram = null; return; } }
   if (m.ph !== 'warn' && !m.hit && ship.alive) {
-    const rr = rv.r * 0.85 + shR, dx = rv.x - ship.x, dy = rv.y - ship.y;
-    if (dx * dx + dy * dy < rr * rr && hurtShip(2)) m.hit = true;
+    const rr = rv.r * 0.85 + shR * hurtK(), dx = rv.x - ship.x, dy = rv.y - ship.y;
+    if (dx * dx + dy * dy < rr * rr && hurtShip(2, 'boss')) m.hit = true;
   }
 }
 function updateRival(dt) {
@@ -1134,7 +1248,7 @@ function updateLasers(dt, shR) {
     L.t += dt; L.x0 = muzzle();
     if (L.ph === 'warn') { if (L.t >= L.warn) { L.ph = 'fire'; L.t = 0; sfx.laserFire(); shake(3); } }
     else {
-      if (!L.hit && ship.alive && Math.abs(ship.y - L.y) < ER('laser') + shR && hurtShip(1)) L.hit = true; // once per laser
+      if (!L.hit && ship.alive && Math.abs(ship.y - L.y) < ER('laser') + shR * hurtK() && hurtShip(1, 'boss')) L.hit = true; // once per laser
       if (L.t >= L.dur) L.dead = true;
     }
   }
@@ -1144,8 +1258,8 @@ function updateLasers(dt, shR) {
 function mineBlast(m) {
   m.dead = true;
   explode(m.x, m.y, 14, { fire: true, shard: 'metal', ringCol: '#ff8a5a', spark: '#ffb38a' }); ring(m.x, m.y, 40, '#ff6a4a', 0.35); sfx.boom('S');
-  const rr = 40 + shipR() * 0.6, dx = ship.x - m.x, dy = ship.y - m.y;
-  if (ship.alive && dx * dx + dy * dy < rr * rr) hurtShip(1);
+  const rr = 40 + shipR() * 0.6 * hurtK(), dx = ship.x - m.x, dy = ship.y - m.y;
+  if (ship.alive && dx * dx + dy * dy < rr * rr) hurtShip(1, 'boss');
 }
 function killMob(m, src) {
   if (m.dead) return;
@@ -1158,15 +1272,17 @@ function killMob(m, src) {
   if (src === 'bot') { run.botKills++; pend.botKill++; }
   if (src === 'beam') { run.beamKills++; if (run.beamKills > run.beamMax) run.beamMax = run.beamKills; }
 }
+const hurtK = () => (run && run.AS && run.AS.hurtScale > 0) ? run.AS.hurtScale : 1;   // v3: the hull's own hitbox, smaller for young pilots
 function updateEnemies(dt) {
-  const shR = shipR(), hot = ship.alive && st === 'play' && !debug.invincible;
+  if (!eshots.length && !emobs.length) return;
+  const shR = shipR() * hurtK(), hot = ship.alive && st === 'play' && !debug.invincible;
   for (const s of eshots) {
     if (s.dead) continue;
     s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
     if (s.x < -30 || s.x > W + 60 || s.y < -30 || s.y > H + 30 || s.life <= 0) { s.dead = true; continue; }
     if (hot && ship.inv <= 0) {
       const rr = s.r + shR * 0.75, dx = s.x - ship.x, dy = s.y - ship.y;
-      if (dx * dx + dy * dy < rr * rr) { s.dead = true; sparks(s.x, s.y, 5, '#ffb3a0', 120); hurtShip(s.dmg || 1); }
+      if (dx * dx + dy * dy < rr * rr) { s.dead = true; sparks(s.x, s.y, 5, '#ffb3a0', 120); hurtShip(s.dmg || 1, s.src || 'boss'); }
     }
   }
   compact(eshots, s => !s.dead);
@@ -1179,7 +1295,7 @@ function updateEnemies(dt) {
     else if (m.kind === 'drone' && Math.random() < 3 * dt * FX) addP(P_SPARK, m.x + rnd(-5, 5), m.y + rnd(-5, 5), rnd(-30, 30), rnd(-30, 30), 0.2, 3, '#ffb38a', 50);
     if (hot && ship.inv <= 0) {
       const rr = m.r + shR * 0.8, dx = m.x - ship.x, dy = m.y - ship.y;
-      if (dx * dx + dy * dy < rr * rr) { if (m.kind === 'mine') mineBlast(m); else { m.dead = true; sparks(m.x, m.y, 8, '#ffcf6a', 140); hurtShip(1); } continue; }
+      if (dx * dx + dy * dy < rr * rr) { if (m.kind === 'mine') mineBlast(m); else { m.dead = true; sparks(m.x, m.y, 8, '#ffcf6a', 140); hurtShip(1, 'boss'); } continue; }
     }
     if (m.life <= 0) { if (m.kind === 'mine') mineBlast(m); else { m.dead = true; smoke(m.x, m.y, 2, '#6d6a80'); } continue; }
     if (m.x < -40 || m.x > W + 80 || m.y < -60 || m.y > H + 60) m.dead = true;
@@ -1251,7 +1367,8 @@ function beginArrive() {
 function report() {
   const r = { score: Math.round(run.score), kills: run.kills, coins: run.coins, hits: run.hits, meteors: run.meteors, supers: run.supers, noHit: run.hits === 0,
     hpEnd: ship ? Math.max(0, ship.hp) : 0, maxHp: ship ? ship.maxHp : 0, comboMax: run.comboMax, beamMax: run.beamMax,
-    crystals: run.crystals, chain: run.chain, botKills: run.botKills, pickups: run.pickups };
+    crystals: run.crystals, chain: run.chain, botKills: run.botKills, pickups: run.pickups,
+    bumps: run.bumps, deaths: run.deaths, rescued: run.rescued, rescueTotal: run.rescueTotal, bossFixed: run.bossFixed.slice(), bossTime: run.bossTime, hard: run.hard };
   if (run.mode === 'duel') r.time = Math.round((run.fightTime != null ? run.fightTime : run.fightT) * 10) / 10;
   return r;
 }
@@ -1269,6 +1386,7 @@ function endRun(win) {
     else res = (win ? M.finishLeg(run.jid, run.li, r) : M.failLeg(run.jid, run.li, r)) || {};
   } catch (e) { console.error(e); }
   lastWin = win; lastRun = duel ? { mode: 'duel', rid: run.rid } : { jid: run.jid, li: run.li };
+  if (win && !duel) delete retries[run.jid + ':' + run.li];
   st = 'over'; stT = 0; wakeOff(); dragId = null;
   safe(UI.showHud, false);
   const mine = run;
@@ -1299,16 +1417,16 @@ function sim(dt) {
   scroll += spd * dt;
 
   if (st === 'play' && !duel) {
-    run.elapsed += dt;
+    if (!run.frozen) run.elapsed += dt;
     run.mercyT -= dt;
     if (!run.half && run.elapsed >= L.dur / 2) { run.half = true; const h = tt('f_halfway'); if (h) safe(UI.note, h); }
-    if (!run.ending && run.elapsed >= L.dur) { run.ending = true; run.endT = 0; }
+    if (!run.ending && !run.boss && run.elapsed >= L.dur) { run.ending = true; run.endT = 0; }
     if (run.ending) {
       run.endT += dt;
       let left = 0; for (const o of objs) if (!o.dead && o.x < W + 40) left++;
       const mLeft = meteors.some(m => !m.dead);
       if ((left === 0 && !mLeft) || run.endT > 4) beginArrive();
-    } else { spawner(dt); meteorSpawner(); }
+    } else { runBeats(dt); if (!run.boss) { spawner(dt); meteorSpawner(); } }
     if (!bot.startSay || (bot.startSay -= dt) <= 0) { if (bot.startSay !== null) { bot.startSay = null; say('bot_start', true); } }
     // ★3 reached (the score goal of DESIGN §4.3); settlement decides the stars
     if (!run.starSaid && L.star > 0 && run.score >= L.star) { run.starSaid = true; floatText('★★★', ship.x + 110, ship.y - 46, '#ffe066', 22); sfx.pickup(); }
@@ -1319,8 +1437,9 @@ function sim(dt) {
 
   updateShip(dt);
   updateObjs(dt);
-  if (duel && rv) { updateRival(dt); updateEnemies(dt); }
-  else updateMeteors(dt);
+  if (rv) updateRival(dt);
+  updateEnemies(dt);
+  if (!duel) updateMeteors(dt);
   updatePicks(dt);
   updateBot(dt);
   updateParts(dt);
@@ -1331,7 +1450,7 @@ function sim(dt) {
 }
 
 function canFire() {
-  if (run.mode === 'duel') return run.ds === 'fight' || run.ds === 'shift';
+  if (run.mode === 'duel' || rv) return run.ds === 'fight' || run.ds === 'shift';
   return !run.ending || run.endT < 3.5;
 }
 function updateShip(dt) {
@@ -1349,7 +1468,7 @@ function updateShip(dt) {
     ship.thrust = 0.6 + Math.min(0.3, Math.abs(ship.vy) / 1200);
     ship.inv = Math.max(0, ship.inv - dt);
     ship.rapidT = Math.max(0, ship.rapidT - dt);
-    if (!ship.shieldUp && S.shieldCd > 0) { ship.shieldT -= dt; if (ship.shieldT <= 0) { ship.shieldUp = true; ring(ship.x, ship.y, 44, '#9ff0ff', 0.3); say2('f_shieldUp', ship.x + 30, ship.y + 40, '#9ff0ff', 14); } }
+    if (!ship.shieldUp && shieldCd() > 0) { ship.shieldT -= dt; if (ship.shieldT <= 0) { ship.shieldUp = true; ring(ship.x, ship.y, 44, '#9ff0ff', 0.3); say2('f_shieldUp', ship.x + 30, ship.y + 40, '#9ff0ff', 14); } }
     if (S.superPassive > 0 && beamT <= 0) { superF = Math.min(1, superF + S.superPassive * dt); checkSuperFull(); }
     // hull ✦ regen: +1 hull after S.regen seconds without a hit
     if (S.regen > 0 && ship.hp < ship.maxHp) {
@@ -1371,7 +1490,7 @@ function updateShip(dt) {
       const b = beamRect();
       for (const o of objs) if (!o.dead && circRect(o.x, o.y, o.r, b)) kill(o, 'beam');
       for (const m of meteors) if (!m.dead && m.phase === 'go' && circRect(m.x, m.y, m.r, b)) killMeteor(m);
-      if (run.mode === 'duel') beamDuel(dt, b);
+      if (rv) beamDuel(dt, b);
       if (Math.random() < 0.5 * FX) addP(P_SPARKLE, rnd(ship.x + 40, W), ship.y + rnd(-30, 30), rnd(-80, 80), rnd(-60, 60), 0.4, rnd(5, 9), pick(['#fff6c2', '#9ff0ff']), 30);
       if (beamT <= 0) beamT = 0;
     }
@@ -1410,7 +1529,11 @@ function updateShip(dt) {
   }
 }
 function fire() {
-  const duel = run.mode === 'duel' && rv;
+  const duel = !!rv, AS = run.AS || {};
+  let tgt = null;
+  if (!duel && AS.autoAim) { // v3 Moon: bolts bend towards the nearest thing ahead
+    let bd = 1e9; for (const o of objs) { if (o.dead || o.x < ship.x + 40 || o.x > W - 10 || o.harmless) continue; const dy = o.y - ship.y; if (Math.abs(dy) > 140) continue; const d = (o.x - ship.x) + Math.abs(dy) * 1.5; if (d < bd) { bd = d; tgt = o; } }
+  }
   for (const g of GUNS) {
     if (bolts.length >= 100) break;
     // duel bolts fly faster (flight ≈ 0.6 s across the arena) and steer gently towards the rival (see updateObjs),
@@ -1424,20 +1547,21 @@ function fire() {
       vx = Math.cos(a2) * v; vy = -dy * v / Math.max(80, rv.x - mx) + Math.sin(a2) * v; ang = Math.atan2(vy, vx);
       dmg *= S.duelBolt || 1;
     } else { vx = Math.cos(a) * v; vy = Math.sin(a) * v; ang = a; }
-    bolts.push({ x: mx, y: my, vx, vy, ang, dmg, lv: BLV, pierce: S.pierce | 0, skip: null, dead: false, as: duel ? 0 : null });
+    bolts.push({ x: mx, y: my, vx, vy, ang, dmg, lv: BLV, pierce: S.pierce | 0, skip: null, dead: false, as: duel ? 0 : null, tgt, ta: 0 });
   }
   sfx.shoot();
 }
 function updateObjs(dt) {
-  const shR = shipR(), duel = run.mode === 'duel';
+  const shR = shipR() * hurtK(), big = (run.AS && run.AS.bigHitbox > 0) ? run.AS.bigHitbox : 1;
   for (let i = 0; i < bolts.length; i++) {
     const b = bolts[i];
     b.x += b.vx * dt; b.y += b.vy * dt;
     if (b.as !== null && rv) { b.as += clamp((rv.y - b.y) * 2 - b.as, -40, 40) * dt * 8; b.y += b.as * dt; b.ang = Math.atan2(b.vy + b.as, b.vx); } // duel aim assist
+    else if (b.tgt && !b.tgt.dead && b.tgt.x > b.x) { b.ta += clamp((b.tgt.y - b.y) * 3 - b.ta, -60, 60) * dt * 8; b.y += b.ta * dt; b.ang = Math.atan2(b.vy + b.ta, b.vx); } // v3 Moon auto-aim
     if (b.x > W + 20 || b.y < -20 || b.y > H + 20) { b.dead = true; continue; }
     for (let j = 0; j < objs.length; j++) {
-      const o = objs[j]; if (o.dead || o === b.skip) continue;
-      const rr = o.r + 4, dx = b.x - o.x, dy = b.y - o.y;
+      const o = objs[j]; if (o.dead || o === b.skip || o.ghost) continue;
+      const rr = o.r * big + 4, dx = b.x - o.x, dy = b.y - o.y;
       if (dx * dx + dy * dy < rr * rr) {
         // blaster ✦ pierce: a bolt passes through one small rock or ice shard
         if (b.pierce > 0 && o.type === 'rock' && o.size === 'S' && o.kind !== 'crystal') { b.pierce--; b.skip = o; }
@@ -1448,7 +1572,7 @@ function updateObjs(dt) {
       }
     }
     if (b.dead) continue;
-    if (duel) { boltDuel(b); continue; }
+    if (rv) { boltDuel(b); if (b.dead) continue; }
     for (const m of meteors) { // meteors shrug bolts off (only the beam breaks them)
       if (m.phase !== 'go' || m.dead) continue;
       const dx = b.x - m.x, dy = b.y - m.y, rr = m.r + 4;
@@ -1459,16 +1583,19 @@ function updateObjs(dt) {
   for (let i = 0; i < objs.length; i++) {
     const o = objs[i]; if (o.dead) continue;
     if (o.killT > 0) { o.killT -= dt; if (o.killT <= 0) { kill(o, o.chainSrc || 'blast'); continue; } }
-    o.x += o.vx * dt;
-    if (o.kind === 'drone') { o.ph += dt * 2.2; o.y = o.by + Math.sin(o.ph) * o.wob; o.by += o.vy * dt; }
-    else o.y += o.vy * dt;
+    if (o.move) { o.move(o, dt); if (o.dead) continue; }   // v3 set pieces drive their own motion
+    else {
+      o.x += o.vx * dt;
+      if (o.kind === 'drone') { o.ph += dt * 2.2; o.y = o.by + Math.sin(o.ph) * o.wob; o.by += o.vy * dt; }
+      else o.y += o.vy * dt;
+    }
     o.rot += o.vr * dt;
     o.flash = Math.max(0, o.flash - dt * 6);
     if (o.x < -o.r - 60 || o.y < -o.r - 80 || o.y > H + o.r + 80) { o.dead = true; continue; }
     if (o.kind === 'drone' && Math.random() < 3 * dt * FX) addP(P_SPARK, o.x + rnd(-8, 8), o.y + rnd(-8, 8), rnd(-40, 40), rnd(-40, 40), 0.2, 4, '#9fe8ff', 50);
-    if (ship.alive && st === 'play') {
+    if (ship.alive && st === 'play' && !o.harmless) {
       const rr = o.r * 0.85 + shR, dx = o.x - ship.x, dy = o.y - ship.y;
-      if (dx * dx + dy * dy < rr * rr && ship.inv <= 0 && !debug.invincible) { if (hurtShip(1)) kill(o, 'ram'); }
+      if (dx * dx + dy * dy < rr * rr && ship.inv <= 0 && !debug.invincible) { if (hurtShip(o.dmg || 1, o.src || 'rock')) { if (o.solid) ship.inv = 0.5; else kill(o, 'ram'); } }
     }
   }
   compact(objs, o => !o.dead);
@@ -1500,8 +1627,8 @@ function updateMeteors(dt) {
     }
     // G3: overlapping the ship is never a dodge, even while it blinks after a hit
     if (ship.alive && st === 'play' && !m.hitShip) {
-      const rr = m.r * 0.8 + shR, dx = m.x - ship.x, dy = m.y - ship.y;
-      if (dx * dx + dy * dy < rr * rr) { m.hitShip = true; if (ship.inv <= 0 && !debug.invincible) hurtShip(2); }
+      const rr = m.r * 0.8 + shR * hurtK(), dx = m.x - ship.x, dy = m.y - ship.y;
+      if (dx * dx + dy * dy < rr * rr) { m.hitShip = true; if (ship.inv <= 0 && !debug.invincible) hurtShip(2, 'meteor'); }
     }
     if (!m.counted && m.x + m.r < ship.x - shR) {
       m.counted = true;
@@ -1573,7 +1700,8 @@ function updateBot(dt) {
   if (bot.zapT > 0) return;
   bot.zapT = 1 / B.rate;
   const shots = B.double ? 2 : 1, used = [];
-  if (run.mode === 'duel') {
+  if (run.held) return;   // v3: a grabber has Nabeeh
+  if (rv) {
     if (run.ds === 'intro' || run.ds === 'fixed') return;
     let n = 0;
     for (let s = 0; s < shots; s++) {
@@ -1651,7 +1779,8 @@ function drawWorld(c) {
   let sx = 0, sy = 0;
   if (shakeA > 0 && !REDUCED) { sx = rnd(-1, 1) * shakeA; sy = rnd(-1, 1) * shakeA; }
   c.save(); c.translate(sx, sy);
-  if (duel && rv) { try { drawDuelUnder(c); } catch (e) { errOnce('duelUnder', e); } }
+  if (typeof drawPiecesUnder === 'function') { try { drawPiecesUnder(c); } catch (e) { errOnce('piecesUnder', e); } }
+  if (rv) { try { drawDuelUnder(c); } catch (e) { errOnce('duelUnder', e); } }
   // A3: the "!" marker moves left of the super button when the lane is low
   for (const m of meteors) if (m.phase === 'warn' && !m.dead) safe(A.drawWarning, c, W, m.y, m.wt / m.warn, t, m.y > H - 125 ? W - 125 : W - 20);
   for (const p of picks) {
@@ -1662,15 +1791,16 @@ function drawWorld(c) {
   const pal = J.theme.rock, ipal = J.theme.ice || J.theme.rock;
   for (const o of objs) {
     if (o.dead) continue;
+    if (o.draw) { try { o.draw(c, o); } catch (e) { errOnce('draw:' + o.type, e); } continue; }
     if (o.type === 'rock') { RO.x = o.x; RO.y = o.y; RO.r = o.r; RO.rot = o.rot; RO.seed = o.seed; RO.kind = o.kind; RO.flash = o.flash; RO.palette = o.kind === 'ice' ? ipal : pal; A.drawRock(c, RO); }
     else { JO.x = o.x; JO.y = o.y; JO.rot = o.rot; JO.seed = o.seed; JO.kind = o.kind; JO.flash = o.flash; JO.t = t; A.drawJunk(c, JO); }
   }
-  if (duel && rv) { try { drawRivalNow(c); } catch (e) { errOnce('rival', e); } }
+  if (rv) { try { drawRivalNow(c); } catch (e) { errOnce('rival', e); } }
   drawParts(c, false);
   const bk = S.fx.bolt || 'blaster';
   for (const b of bolts) A.drawBolt(c, b.x, b.y, bk, b.lv, b.ang);
   for (const m of meteors) if (m.phase === 'go' && !m.dead) { MO.x = m.x; MO.y = m.y; MO.r = m.r; MO.vx = m.vx; MO.seed = m.seed; A.drawMeteor(c, MO, t); }
-  if (duel && rv) { try { drawDuelOver(c); } catch (e) { errOnce('duelOver', e); } }
+  if (rv || eshots.length) { try { drawDuelOver(c); } catch (e) { errOnce('duelOver', e); } }
   if (beamT > 0 && ship.alive) A.drawBeam(c, ship.x + 22, ship.y, W, clamp(beamT / beamMax, 0, 1), t);
   for (const l of lasers) A.drawBotLaser(c, l.x1, l.y1, l.x2, l.y2, l.life / l.max);
   drawParts(c, true);
@@ -1680,11 +1810,12 @@ function drawWorld(c) {
     const age = bot.sayMax - bot.sayT, f = Math.min(1, age / 0.15, bot.sayT / 0.25);
     A.drawBubble(c, bot.x + 6, bot.y - 14, bot.say, f, W);
   }
-  if (duel && rv && rv.sayT > 0 && rv.say && rv.alpha > 0.2) {
+  if (rv && rv.sayT > 0 && rv.say && rv.alpha > 0.2) {
     const age = rv.sayMax - rv.sayT, f = Math.min(1, age / 0.15, rv.sayT / 0.25);
     safe(A.drawBubble, c, rv.x - rv.r * 0.4, rv.y - rv.r - 2, rv.say, f, W);
   }
   drawTexts(c);
+  if (typeof drawPiecesOver === 'function') { try { drawPiecesOver(c); } catch (e) { errOnce('piecesOver', e); } }
   c.restore();
   // low hull: soft red edge from the left, slow pulse (no strobe); the gradient is built once (G8)
   if (ship.alive && ship.hp === 1 && st === 'play') {
@@ -1711,7 +1842,7 @@ function drawDuelUnder(c) {
   if (rv.blink) {
     const f = clamp(rv.blink.t / rv.blink.tell, 0, 1);
     for (const y of [rv.blink.ty, ...rv.blink.dec]) {
-      if (A.drawBlinkGhost) A.drawBlinkGhost(c, rv.id, rv.x, y, f, t);
+      if (A.drawBlinkGhost) A.drawBlinkGhost(c, rv.art || rv.id, rv.x, y, f, t);
       else { c.save(); c.setLineDash([4, 5]); c.strokeStyle = `rgba(220,200,255,${0.3 + 0.5 * f})`; c.lineWidth = 2; c.beginPath(); c.arc(rv.x, y, rv.r, 0, TAU); c.stroke(); c.restore(); }
     }
   }
@@ -1727,13 +1858,13 @@ function drawRivalNow(c) {
     else { c.fillStyle = p.flash > 0.5 ? '#fff' : '#9aa3b8'; c.fillRect(p.x - 10, p.y - 7, 20, 14); }
   }
   const shift = run.ds === 'shift';
-  const o = RVO; o.t = t; o.hurt = rv.hurt; o.phase = Math.min(2, rv.ph); o.stun = rv.stunT > 0 ? clamp(rv.stunT, 0.01, 1) : 0;
+  const o = RVO; o.t = t; o.s = rv.s || 1; o.hurt = rv.hurt; o.phase = Math.min(2, rv.ph); o.stun = rv.stunT > 0 ? clamp(rv.stunT, 0.01, 1) : 0;
   o.shift = shift ? clamp(1 - run.dsT / 1.2, 0, 1) : 0; o.limp = run.ds === 'fixed' ? rv.limp || 0 : 0; o.thrust = rv.ram && rv.ram.ph !== 'warn' ? 1.4 : 0.5 + Math.min(0.5, Math.abs(rv.ty - rv.y) / 120);
   o.tell = rv.tell; o.mood = run.ds === 'fixed' ? (rv.fixedEye ? 'fixed' : 'hit') : rv.hurt > 0.6 ? 'hit' : 'angry'; o.shield = sh;
   o.alpha = rv.alpha * (shift && Math.floor(t * 14) % 2 ? 0.55 : 1);
   if (o.alpha <= 0.01) return;
   c.save(); c.translate(rv.x, rv.y); if (rv.rot) c.rotate(rv.rot);
-  if (A.drawRival) A.drawRival(c, rv.id, 0, 0, o);
+  if (A.drawRival) A.drawRival(c, rv.art || rv.id, 0, 0, o);
   else {
     c.globalAlpha = o.alpha; c.fillStyle = o.hurt > 0.5 ? '#ffd0c0' : '#8a8fa8'; c.strokeStyle = INK; c.lineWidth = 3;
     c.beginPath(); c.arc(0, 0, rv.r, 0, TAU); c.fill(); c.stroke();
@@ -1756,6 +1887,7 @@ function drawDuelOver(c) {
     if (A.drawEnemyShot) A.drawEnemyShot(c, s.kind, s.x, s.y, s.ang, t);
     else { c.fillStyle = s.kind === 'dart' ? '#ffe066' : '#ff6a3c'; c.beginPath(); c.arc(s.x, s.y, s.r, 0, TAU); c.fill(); }
   }
+  if (!rv) return;
   for (const L of elasers) if (L.ph === 'fire') {
     const f = clamp(1 - L.t / L.dur, 0, 1);
     if (A.drawEnemyLaser) A.drawEnemyLaser(c, L.x0, L.y, f, 'fire', t);
@@ -1852,14 +1984,14 @@ const HUDO = { hp: 0, maxHp: 0, score: 0, coins: 0, prog: 0, superF: 0, shield: 
 const RIVH = { id: '', name: '', hp: 0, max: 1, phase: 0, phases: 1, ticks: [], shield: 0, stun: false, intro: 1 };
 function hudNow() {
   if (!run || !ship || (st !== 'play' && st !== 'pause' && st !== 'arrive' && st !== 'dead')) return;
-  const sh = ship.shieldUp || ship.extraShield > 0 ? 1 : S.shieldCd > 0 ? clamp(1 - ship.shieldT / S.shieldCd, 0, 0.99) : 0;
+  const scd = shieldCd(), sh = ship.shieldUp || ship.extraShield > 0 ? 1 : scd > 0 ? clamp(1 - ship.shieldT / scd, 0, 0.99) : 0;
   const o = HUDO, duel = run.mode === 'duel';
   o.hp = ship.hp; o.maxHp = ship.maxHp; o.score = Math.round(run.score); o.coins = run.coins;
   o.prog = duel ? 0 : Math.round(clamp(run.elapsed / run.L.dur, 0, 1) * 200) / 200;
   o.superF = Math.round(superF * 100) / 100; o.shield = Math.round(sh * 50) / 50; o.combo = mult;
   o.rapid = ship.rapidT > 0 ? Math.round(ship.rapidT / 6 * 50) / 50 : 0;
   o.duel = duel; o.rival = null;
-  if (duel && rv) {
+  if (rv) {
     const r = RIVH;
     if (r.id !== rv.id) { r.id = rv.id; r.name = rvName(rv.id); r.max = rv.max; r.phases = (rv.R.phases || []).length || 1; r.ticks = (rv.R.phases || []).slice(1).map(p => p.at); }
     r.hp = Math.ceil(rv.hp); r.phase = rv.ph; r.stun = rv.stunT > 0;
@@ -1978,7 +2110,19 @@ window.__game = {
   start: (j, l) => start(j, l),
   duel: (rid) => startDuel(rid),   // rival id, or 1..10 for the ladder position
   debug: Object.assign(debug, {
-    skip() { if (st === 'play' && run && run.mode !== 'duel') { run.elapsed = run.L.dur; run.ending = true; beginArrive(); return true; } return false; },
+    // v3: skip() jumps to the WARNING before the boss (or past the boss on screen); skip(true) ends the leg at once
+    skip(all = false) {
+      if (st !== 'play' || !run || run.mode === 'duel') return false;
+      if (rv) { if (run.ds !== 'fixed') { run.fightTime = run.fightT; rv.hp = 0; } bossDone(); return true; }
+      if (!all && run.plan && run.plan.boss && run.elapsed < run.L.dur - 4.5) return this.jump(run.L.dur - 4.5);
+      run.elapsed = run.L.dur; run.ending = true; run.boss = null; beginArrive(); return true;
+    },
+    jump(T) { // to a time in the leg: earlier beats are skipped, not fired
+      if (st !== 'play' || !run || run.mode === 'duel' || rv) return false;
+      run.elapsed = clamp(T, 0, run.L.dur); while (run.bi < run.beats.length && run.beats[run.bi].t < run.elapsed) run.bi++;
+      run.windows.length = run.pend.length = 0; run.fillerMul = 1; run.mixNow = null; run.meteorNow = null; run.meteorsOff = 0; run.nextMeteor = run.elapsed + 3; return true;
+    },
+    beats() { return run && run.beats ? run.beats.map((b, i) => (i < run.bi ? '✓ ' : '  ') + b.t + ' ' + b.kind + (b.ev ? '/' + b.ev : b.form ? '/' + b.form : b.id ? '/' + b.id : '')) : []; },
     win() {
       if (!run || run.ended || !ship || !ship.alive) return false; // M1: never settle a dead ship as a win
       if (run.mode === 'duel') return this.winDuel(true);
@@ -1986,8 +2130,8 @@ window.__game = {
     },
     // win a duel: through the "fixed" cinematic, or at once with winDuel(true)
     winDuel(now = false) {
-      if (!run || run.mode !== 'duel' || run.ended || !rv || !ship.alive) return false;
-      if (now) { if (run.ds !== 'fixed') { run.fightTime = run.fightT; rv.hp = 0; } endRun(true); return true; }
+      if (!run || run.ended || !rv || !ship.alive) return false;
+      if (now) { if (run.ds !== 'fixed') { run.fightTime = run.fightT; rv.hp = 0; } if (run.mode === 'duel') endRun(true); else bossDone(); return true; }
       if (run.ds === 'intro') { run.ds = 'fight'; startPhase(); }
       if (run.ds !== 'fixed') { run.ds = 'fight'; rv.invT = 0; rv.sh = null; rv.ph = (rv.R.phases || [1]).length - 1; damageRival(rv.hp + 1, 'debug'); }
       return true;
@@ -2011,7 +2155,9 @@ window.__game = {
         hp: ship.hp, maxHp: ship.maxHp, shield: ship.shieldUp, extraShield: ship.extraShield, superF, beamT, score: run.score, kills: run.kills, coins: run.coins, hits: run.hits,
         dodged: run.meteors, supers: run.supers, mult, y: ship.y, qLevel, W, H, botY: bot.y, botSay: bot.sayT > 0 ? bot.say : '', fps: fpsCap,
         comboMax: run.comboMax, beamMax: run.beamMax, crystals: run.crystals, chain: run.chain, botKills: run.botKills, pickups: run.pickups, boost: run.boost,
-        fx: S.fx, costume: S.costume, char: S.char, ds: run.ds, rid: run.rid } : { st, qLevel, W, H, fps: fpsCap };
+        fx: S.fx, costume: S.costume, char: S.char, ds: run.ds, rid: run.rid, bumps: run.bumps, deaths: run.deaths, rescued: run.rescued, frozen: run.frozen,
+        boss: run.boss && run.boss.id, fillerMul: run.fillerMul, bi: run.bi, assist: run.AS, easy: run.easy, hard: run.hard } : { st, qLevel, W, H, fps: fpsCap };
+
     },
     stats: () => S, report: () => run && report(),
     sounds: () => Object.keys(SND), audio: () => actx && actx.state,

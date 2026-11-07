@@ -184,9 +184,10 @@ function drawDuoCanvas(cnv, t, o) {
 }
 // a rival ship (faces left) fitted in a box of side `box` centred at (x, y)
 function rivalPic(c, id, x, y, box, o = {}) {
-  const R = rivalDef(id), r = (typeof A.rivalRadius === 'function' && safeCall(A.rivalRadius, id)) || (R && R.r) || 34, k = box / (2.5 * r);
+  const R = rivalDef(id), artId = (R && R.art) || id, rs = R && R.s > 0 ? R.s : 1;   // v3 guardians borrow a rival body
+  const r = ((typeof A.rivalRadius === 'function' && safeCall(A.rivalRadius, artId)) || (R && R.r) || 34) * rs, k = box / (2.5 * r);
   c.save(); c.translate(x, y);
-  const ok = art('drawRival', c, id, 0, 0, Object.assign({ t: 0, mood: 'angry', phase: 0, s: k }, o));
+  const ok = art('drawRival', c, artId, 0, 0, Object.assign({ t: 0, mood: 'angry', phase: 0, s: k * rs }, o));
   c.scale(k, k);
   if (!ok) {
     c.fillStyle = '#8a8f9c'; c.strokeStyle = INK; c.lineWidth = 3; c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fill(); c.stroke();
@@ -194,7 +195,7 @@ function rivalPic(c, id, x, y, box, o = {}) {
   }
   c.restore();
 }
-const rivalDef = id => MM('rival', id) || (M.RIVALS || []).find(r => r.id === id) || null;
+const rivalDef = id => MM('rival', id) || (M.RIVALS || []).find(r => r.id === id) || MM('guardian', id) || null;
 // booster icons: the matching pickup from art.js (fallback: a plain glyph)
 const BICON = { shield: 'shield', super: 'cell', hull: 'repair', coins: 'coin' };
 const BCOL = { shield: '#2fd4e6', super: '#ffd45a', hull: '#ff6b6b', coins: '#e9b330' };
@@ -346,6 +347,15 @@ export function note(text, ms = 1800) {
   n.textContent = text; n.hidden = false; clearTimeout(noteT); noteT = setTimeout(() => { n.hidden = true; }, ms);
 }
 function hideNote() { clearTimeout(noteT); const n = $('note'); if (n) n.hidden = true; }
+// v3: the WARNING banner before a boss (title + the boss's name), slides in across the screen
+let bannerT = 0;
+export function banner(title, sub, ms = 3600) {
+  const b = $('banner'); if (!b) return;
+  b.querySelector('b').textContent = title || ''; b.querySelector('span').textContent = sub || '';
+  b.hidden = false; b.classList.remove('in'); void b.offsetWidth; b.classList.add('in');
+  clearTimeout(bannerT); bannerT = setTimeout(() => { b.hidden = true; }, ms);
+}
+function hideBanner() { clearTimeout(bannerT); const b = $('banner'); if (b) b.hidden = true; }
 function bump(e) { if (!e || REDUCED) return; e.classList.remove('pop'); void e.offsetWidth; e.classList.add('pop'); }
 function maybeToast() { const t = $('toast'); if (t && updateReady && !hudOn) t.hidden = false; }
 function syncMute() {
@@ -1094,8 +1104,9 @@ function sheetHelp(body) {
   body.appendChild(el('p', 'hint', T('help_keys')));
   sec(TT('help_s_space', 'في الفضاء', 'Out in space'), [['meteor', 'help_meteor'], ['coins', 'help_coins'], ['pickups', 'help_pickups']]);
   sec(TT('help_s_ship', 'سفينتك', 'Your ship'), [['hull', 'help_hull'], ['shield', 'help_shield'], ['nabeeh', 'help_nabeeh'], ['hangar', 'help_hangar']]);
-  sec(TT('help_s_trips', 'الرحلات', 'Journeys'), [['legs', 'help_story'], ['legs', 'help_legs'], ['gates', 'help_gates'], ['stars', 'help_stars']]);
+  sec(TT('help_s_trips', 'الرحلات', 'Journeys'), [['legs', 'help_story'], ['legs', 'help_easy'], ['duels', 'help_bosses'], ['pickups', 'help_rescue'], ['stars', 'help_stars'], ['stars', 'help_medals'], ['legs', 'help_legs'], ['gates', 'help_gates']]);
   sec(T('b_duels') + ' · ' + T('b_missions'), [['duels', 'help_duels'], ['ladder', 'help_ladder'], ['boosters', 'help_boosters'], ['mozah', 'help_mozah']]);
+
   body.appendChild(el('p', 'sec-title', T('r_factTitle')));
   const facts = el('div', 'facts');
   const bodies = ['earth'].concat(M.JOURNEYS.map(j => j.planet || j.id));
@@ -1145,6 +1156,12 @@ function setDuel(rid) {
   const pp = $('rvPhase'); pp.innerHTML = ''; if (phases.length > 1) for (let i = 0; i < phases.length; i++) pp.appendChild(el('i'));
   hc.rvF = hc.rvPh = hc.rvSh = hc.rvTicks = hc.rvIn = hc.rvStun = undefined; $('rivalBar').style.opacity = ''; $('rivalBar').style.transform = '';
   drawRvPortrait(rid, 0, 'angry');
+}
+// v3: a boss inside a leg borrows the duel HUD; when it is fixed the trip bar comes back
+export function setBoss(rid) {
+  if (rid) { setDuel(rid); return; }
+  setDuel(null); hideBanner();
+  if (cur.jid) setTrip(cur.jid, cur.li);
 }
 function drawRvPortrait(rid, phase, mood) {
   const cnv = $('rvPic'); if (!cnv) return; const c = cnv.getContext('2d'), s = cnv.width;
@@ -1281,9 +1298,18 @@ function resultParts(r) {
   if (!r.win) return [{ key: 'r_kept', n: r.kept || 0 }];
   const out = [{ key: r.duel ? 'r_duelReward' : r.first === false ? 'r_replay' : 'r_reward', n: r.reward || 0 }, { key: 'r_picked', n: r.picked != null ? r.picked : (r.run && r.run.coins) || 0 }];
   if (r.bonus) out.push({ key: 'r_bonus', n: r.bonus });
+  if (r.bossReward) out.push({ key: 'r_bossReward', n: r.bossReward });
   if (typeof r.dayBonus === 'number' && r.dayBonus > 0) out.push({ key: 'r_dayBonus', n: r.dayBonus });
   if (r.starPay) out.push({ key: 'r_starPay', n: r.starPay });
+  if (r.medalPay) out.push({ key: 'r_medalPay', n: r.medalPay });
   return out;
+}
+// v3 medals: finish, no damage, every pod rescued, score
+const MEDAL_IDS = ['finish', 'noDamage', 'rescue', 'score'];
+function medalRow(arr, isNew = [], big = false) {
+  const s = el('span', 'medals4' + (big ? ' big' : '')); s.setAttribute('aria-hidden', 'true');
+  MEDAL_IDS.forEach((id, k) => { const i = el('i', 'medal m-' + id + (arr && arr[k] ? ' on' : '') + (isNew.includes(k) ? ' new' : '')); if (isNew.includes(k)) i.style.animationDelay = (1.4 + isNew.indexOf(k) * 0.3) + 's'; s.appendChild(i); });
+  return s;
 }
 const resultTotal = (r, parts) => r.win ? (r.total != null ? r.total : parts.reduce((a, p) => a + p.n, 0)) : (r.kept || 0);
 function partText(p, n) {
@@ -1370,9 +1396,11 @@ function fillResult(r, animate) {
   let msg;
   if (duel) msg = r.win ? '«' + T('rv_' + r.rid + '_fixed') + '» ' + T('du_win') : T('r_failHint') + ' ' + T('r_tryUpgrade');
   else if (!r.win) msg = T('r_failHint') + (M.journeyIndex(r.jid) > 0 || r.li > 0 ? ' ' + T('r_tryUpgrade') : '');
+  else if (r.bossFixed && r.bossFixed.length) msg = T('r_bossFixed', rvName(r.bossFixed[0]));
   else if (r.newBest) msg = T('r_newBest');
   else if (run.noHit || run.hits === 0) msg = T('r_noHit');
   else msg = T('m_legOf', r.li, 3) + ' · ' + legName(r.jid, r.li);
+  if (!duel && r.win && +run.rescueTotal > 0) msg += ' · ' + T('r_rescued', Math.min(run.rescued | 0, run.rescueTotal | 0), run.rescueTotal | 0);
   $('overMsg').textContent = msg;
   // stars (new ones pop in)
   const sb = $('overStars'); sb.innerHTML = '';
@@ -1383,6 +1411,13 @@ function fillResult(r, animate) {
     [...row.children].forEach((s, i) => { s.title = tips[i]; });
     row.setAttribute('aria-hidden', 'false'); row.setAttribute('role', 'img'); row.setAttribute('aria-label', T('r_stars') + ' · ' + T('a_stars', starCount(r.stars)));
     sb.appendChild(row);
+  }
+  if (!duel && r.win && Array.isArray(r.medals)) {
+    const mr = medalRow(r.medals, animate && !REDUCED ? (r.newMedals || []) : [], true);
+    const mtips = [T('md_finish'), T('md_noDamage'), T('md_rescue'), T('md_score', nf(r.star || 0))];
+    [...mr.children].forEach((m, i) => { m.title = mtips[i]; });
+    mr.setAttribute('aria-hidden', 'false'); mr.setAttribute('role', 'img'); mr.setAttribute('aria-label', T('r_medals') + ' · ' + r.medals.filter(Boolean).length + '/4');
+    sb.appendChild(mr);
   }
   sb.hidden = !sb.childElementCount;
   // score boxes: legs = score / kills / best; duels = time / hull / best time
@@ -1414,13 +1449,14 @@ function fillResult(r, animate) {
       planet(c, planetId, w * 0.55, h * 0.56, h * (planetId === 'saturn' ? 0.24 : 0.34), t * 0.3);
       c.save(); c.translate(w * 0.2, h * 0.24 + (REDUCED ? 0 : Math.sin(t * 1.5) * 4)); c.scale(1.4, 1.4); art('drawShip', c, 0, 0, Object.assign({}, L, { t, tilt: 0.1, thrust: 0.5 })); c.restore();
     }, 'over');
-  } else if (duel) {
+  } else if (duel || (r.win && r.bossFixed && r.bossFixed.length)) {
     fact.hidden = true;
+    const bossId = duel ? r.rid : r.bossFixed[0];
     addAnim($('avOver'), t => {
       const cnv = $('avOver'), c = cnv.getContext('2d'), w = cnv.width, h = cnv.height, k = h / 300;
       c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, w, h); stars(c, w, h * 0.75, t, 34, 0.8);
       const bob = REDUCED ? 0 : Math.sin(t * 1.6) * 5;
-      rivalPic(c, r.rid, w * 0.7, h * 0.33 + bob * k, h * 0.42, { t, mood: r.win ? 'fixed' : 'angry' });
+      rivalPic(c, bossId, w * 0.7, h * 0.33 + bob * k, h * 0.42, { t, mood: r.win ? 'fixed' : 'angry' });
       c.save(); c.scale(k, k); astro(c, (w / k) * 0.3, 284, 2.4, { t, pose: r.win ? 'cheer' : 'sad' }); c.restore();
     }, 'over');
   } else {
@@ -1433,6 +1469,7 @@ function fillResult(r, animate) {
   // banners: ladder level-up, Mozah joined, duel unlock card
   const ex = $('overExtra'); ex.innerHTML = '';
   if (r.levelUp) { const lu = el('p', 'banner lvl'); lu.appendChild(el('b', null, '▲ ')); lu.append(T('ld_up', r.levelUp.lv, r.levelUp.mult, r.levelUp.reward)); ex.appendChild(lu); }
+  if (!duel && r.win && r.hardOpen && (r.newMedals || []).length && MM('medalsOf', r.jid) >= 12) { const hb = el('p', 'banner lvl'); hb.appendChild(el('b', null, '★ ')); hb.append(T('md_hard')); ex.appendChild(hb); }
   if (r.girl) {
     const gb = el('button', 'banner girl'); gb.type = 'button'; const cv = mk(64, 64); cv.setAttribute('aria-hidden', 'true');
     const c = cv.getContext('2d'); c.save(); c.scale(64 / 200, 64 / 200); c.translate(0, 90); astro(c, 100, 194, 2.6, { t: 0.4, char: 'mozah', costume: costumeOf('mozah'), pose: 'wave' }); c.restore();
@@ -1440,7 +1477,7 @@ function fillResult(r, animate) {
     gb.onclick = () => { endCount(); pendingSheet = 'costumes'; hook('onQuit'); };
     ex.appendChild(gb);
   }
-  const unl = duel ? (r.win && r.unlock) : (r.levelUp && r.levelUp.unlock);
+  const unl = duel ? (r.win && r.unlock) : (r.bossUnlock || (r.levelUp && r.levelUp.unlock));
   if (unl && unl.id) {
     const u = unl, uc = el('div', 'banner unlock-card'), cv = mk(96, 96); cv.setAttribute('aria-hidden', 'true'); uc.appendChild(cv); unlockPic(cv, u);
     const tx = el('div'); tx.appendChild(el('small', null, T('du_unlock'))); tx.appendChild(el('b', null, u.kind === 'skin' ? T('sk_' + u.id) : T('cs_' + u.id))); uc.appendChild(tx);
@@ -1485,7 +1522,7 @@ export function showResult(r) {
   r = Object.assign({}, r || {});
   if (r.duel && !r.rid) r.rid = duelOn || pendingDuel;
   lastRes = r; if (!r.duel) cur = { jid: r.jid, li: r.li | 0 };
-  hudShow(false); hideNote(); $('pause').hidden = true; $('menu').hidden = true; $('sheet').hidden = true;
+  hudShow(false); hideNote(); hideBanner(); $('pause').hidden = true; $('menu').hidden = true; $('sheet').hidden = true;
   $('over').hidden = false;
   fillResult(r, true);
   runCount(r);
