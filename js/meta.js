@@ -435,12 +435,42 @@ function piece(name, t, j, li, D) {
   if (name === 'tether') return [{ t, kind: 'wave', form: 'tether', n: 1 + Math.floor(j / 4) }];
   return [];
 }
+// ---- v3.1: rage robots and the difficulty curve ----
+// Robots start at Venus. Each journey teaches ONE new attack (alone, in a teach beat on its first leg) and keeps every
+// attack learned before, so the attack mix grows linearly: Venus 1 … Neptune 6.
+export const ROBOT_ATTACKS = ['shot', 'dash', 'bomb', 'sweep', 'shield', 'swarm'];
+// per journey (index = journey): attacks unlocked, attack tokens (robots allowed to attack at once), robot base HP (game.js
+// adds a share of the ship's own firepower so an upgraded ship still meets robots that live long enough to attack), enemy shot
+// speed, telegraph seconds, robot waves per leg, robots per wave, seconds to full rage, attack interval, robot life
+const CV = (attacks, tokens, hp, shotV, tele, waves, n, rage, every, life) => ({ robots: attacks > 0, attacks, tokens, hp, shotV, tele, waves, n, rage, every, life });
+export const CURVE = [
+  CV(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),              // moon: no robots (toddlers)
+  CV(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),              // mars
+  CV(1, 2, 14, 190, 1.0, 2, 2, 11, 2.7, 15),     // venus: aimed shot
+  CV(2, 2, 18, 205, 0.95, 3, 2, 10, 2.5, 15),    // belt: + charge dash
+  CV(3, 3, 22, 220, 0.9, 3, 3, 9, 2.35, 16),     // jupiter: + area bomb
+  CV(4, 3, 26, 235, 0.85, 4, 3, 8.5, 2.2, 16),   // saturn: + laser sweep
+  CV(5, 4, 30, 250, 0.8, 4, 3, 8, 2.1, 17),      // uranus: + shield link
+  CV(6, 4, 34, 265, 0.75, 5, 4, 7.5, 2.0, 17),   // neptune: + swarm
+];
+export const curve = j => CURVE[clamp(j | 0, 0, CURVE.length - 1)];
+// leg modifiers (Jupiter on): one twist per leg, two on the Hard tier
+export const MODS = ['ion', 'dark', 'magnet', 'wind'];
+// replays draw their waves and set pieces from the journey's pool with a seed, so the same leg flies differently
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const PLANS = {};
-export function legPlan(jid, li, hard = false) {
+export function legPlan(jid, li, hard = false, seed = null) {
   const j = journeyIndex(jid); if (j < 0 || !(li >= 0 && li <= 2)) return null;
-  const key = jid + ':' + li + (hard ? ':h' : '');
+  const key = jid + ':' + li + (hard ? ':h' : '') + (seed != null ? ':' + seed : '');
   if (PLANS[key]) return PLANS[key];
-  const J = JOURNEYS[j], L = J.legs[li], F = FLAV[jid] || FLAV.moon;
+  const J = JOURNEYS[j], L = J.legs[li], F0 = FLAV[jid] || FLAV.moon;
+  let F = F0;
+  if (seed != null) { // a replay: shuffle the journey's own pieces into the slots (never the same piece twice in a row)
+    const R = rng(seed), any = a => a[Math.floor(R() * a.length)], waves = [...F0.waveA, ...F0.waveB], sets = [...F0.mid, ...F0.twist];
+    const wA = any(waves); let wB = any(waves); for (let k = 0; k < 4 && wB === wA; k++) wB = any(waves);
+    const sM = any(sets); let sT = any(sets); for (let k = 0; k < 4 && sT === sM; k++) sT = any(sets);
+    F = Object.assign({}, F0, { waveA: [wA, wA, wA], waveB: [wB, wB, wB], mid: [sM, sM, sM], twist: [sT, sT, sT] });
+  }
   const D = LEG_BASE + 5 * li, r = f => Math.round(f * D);
   const assist = hard ? {} : Object.assign({}, J.assist || {});
   const speedScale = (assist.speedScale || 1) * (hard ? HARD.speed : 1);
@@ -473,6 +503,14 @@ export function legPlan(jid, li, hard = false) {
   // the twist
   beats.push({ t: r(0.85), kind: 'filler', dur: r(0.1), rate: 0.5 });
   beats.push(...piece(F.twist[li], r(0.85) + 1, j, li, D));
+  // v3.1 rage robots (Venus on): a teach beat on the first leg, then waves that grow with the leg and the journey
+  const C = curve(j);
+  if (C.robots) {
+    const newest = ROBOT_ATTACKS[C.attacks - 1];
+    if (li === 0) { beats.push({ t: r(0.05), kind: 'wave', form: 'robots', n: 1, teach: newest }); beats.push({ t: r(0.05), kind: 'say', key: 'bot_teach_' + newest }); }
+    const slots = [0.18, 0.4, 0.6, 0.75, 0.88].slice(0, Math.min(5, C.waves + li));
+    for (const f of slots) beats.push({ t: r(f), kind: 'wave', form: 'robots', n: C.n + (li >= 2 ? 1 : 0) + (hard ? 1 : 0) });
+  }
   // calm, WARNING, boss
   beats.push({ t: r(0.95), kind: 'filler', dur: D, rate: 0 });
   beats.push({ t: r(0.95), kind: 'meteorsOff', dur: D });
@@ -485,9 +523,40 @@ export function legPlan(jid, li, hard = false) {
   beats.sort((a, b) => a.t - b.t);
   const star = Math.round(L.star * (D / L.dur) * 1.15 / 50) * 50;
   const plan = { jid, li, hard: !!hard, dur: D, star, speedScale, warnPlus, assist, hpMul: (L.hp > 0 ? L.hp : 1) * (hard ? HARD.hp : 1),
-    beats, rescueTotal: 3, boss: B, bossAtk: assist.bossAtk || 1 };
+    beats, rescueTotal: 3, boss: B, bossAtk: assist.bossAtk || 1, curve: curve(j), mods: [] };
+  if (j >= 4) {
+    const R = seed != null ? rng(seed ^ 0x9e37) : null, first = R ? MODS[Math.floor(R() * MODS.length)] : MODS[(j * 2 + li) % MODS.length];
+    plan.mods.push(first);
+    if (hard) plan.mods.push(MODS[(MODS.indexOf(first) + 1 + (li % 3)) % MODS.length]);
+  }
   PLANS[key] = plan; return plan;
 }
+
+// ---- v3.1: real bosses — the journey-end rogue ships become big machines ----
+// A rig sits on top of the rival: the rival body is the CORE (drawn `scale` times bigger), PARTS bolt on around it, each
+// with its own HP (a share of the core's) and its own attack. Part kinds:
+//   gun        fires from its own barrel: aim (n shots) or fan (n, arc)
+//   arm        area damage: zone (n red circles round the ship, then a blast) or ring (an expanding ring with one gap)
+//   hangar     launches minions (rage robots of the journey; rocks and drones on the Moon and Mars) and rebuilds guards
+//   shieldGen  while it stands the core takes a quarter of the damage
+// Guards are drones orbiting the core that block bolts; the hangar rebuilds them. At `advance` (core HP share) the boss
+// moves into the arena, and below `desp` it fires everything faster. `j` is the journey the boss belongs to.
+const PT = (kind, dx, dy, hp, atk) => ({ kind, at: [dx, dy], hp, atk });
+export const BOSS_RIG = {
+  khurda:   { j: 0, scale: 1.5, guards: 0, advance: 0.3, desp: 0.15, parts: [PT('hangar', 8, -64, 0.2, { every: 4.5, n: 2 })] },
+  bubolt:   { j: 1, scale: 1.5, guards: 2, advance: 0.3, desp: 0.15, parts: [PT('gun', -18, -62, 0.18, { k: 'aim', every: 2.6, n: 2, v: 230 }), PT('hangar', -10, 64, 0.2, { every: 5, n: 1 })] },
+  zannana:  { j: 2, scale: 1.9, guards: 2, advance: 0.35, desp: 0.15, parts: [PT('gun', -14, -60, 0.16, { k: 'fan', every: 2.6, n: 3, arc: 0.4, v: 250 }), PT('gun', -14, 60, 0.16, { k: 'aim', every: 2.2, n: 2, v: 260 }), PT('shieldGen', 44, 0, 0.18)] },
+  magna:    { j: 3, scale: 1.5, guards: 0, advance: 0.35, desp: 0.15, parts: [PT('shieldGen', 52, 0, 0.16), PT('hangar', -4, 66, 0.18, { every: 6, n: 1 }), PT('arm', -4, -66, 0.18, { k: 'zone', every: 5, n: 2, r: 52 })] },
+  radar:    { j: 4, scale: 1.5, guards: 2, advance: 0.35, desp: 0.15, parts: [PT('gun', -12, -64, 0.15, { k: 'aim', every: 2, n: 3, v: 270 }), PT('gun', -12, 64, 0.15, { k: 'fan', every: 2.6, n: 5, arc: 0.6, v: 240 }), PT('arm', 48, -34, 0.15, { k: 'zone', every: 5.5, n: 3, r: 50 }), PT('hangar', 48, 40, 0.16, { every: 6.5, n: 1 })] },
+  ghummaid: { j: 5, scale: 1.6, guards: 3, advance: 0.35, desp: 0.15, parts: [PT('shieldGen', 46, 0, 0.15), PT('arm', -10, -60, 0.15, { k: 'ring', every: 6, w: 0.5, v: 200 }), PT('hangar', -10, 60, 0.15, { every: 6.5, n: 1 }), PT('gun', 30, -50, 0.13, { k: 'aim', every: 2.2, n: 3, v: 280 })] },
+  dawwama:  { j: 6, scale: 1.55, guards: 3, advance: 0.4, desp: 0.15, parts: [PT('gun', -14, -64, 0.13, { k: 'fan', every: 2.4, n: 5, arc: 0.7, v: 240 }), PT('arm', -14, 64, 0.13, { k: 'ring', every: 6, w: 0.45, v: 220 }), PT('arm', 48, -40, 0.13, { k: 'zone', every: 5, n: 3, r: 52 }), PT('shieldGen', 52, 22, 0.14), PT('hangar', 30, 62, 0.14, { every: 7, n: 2 })] },
+  kabeer:   { j: 7, scale: 1.4, guards: 2, advance: 0.4, desp: 0.15, parts: [PT('hangar', -10, -70, 0.14, { every: 6, n: 2 }), PT('hangar', -10, 70, 0.14, { every: 6, n: 2 }), PT('gun', 56, -36, 0.13, { k: 'aim', every: 2, n: 3, v: 280 }), PT('arm', 56, 36, 0.13, { k: 'zone', every: 5, n: 3, r: 54 })] },
+  sindan:   { j: 7, scale: 1.45, guards: 3, advance: 0.4, desp: 0.15, parts: [PT('shieldGen', 56, 0, 0.13), PT('gun', -12, -66, 0.13, { k: 'fan', every: 2.4, n: 5, arc: 0.6, v: 250 }), PT('arm', -12, 66, 0.13, { k: 'ring', every: 5.5, w: 0.42, v: 230 }), PT('hangar', 40, 60, 0.13, { every: 7, n: 2 })] },
+  sifr:     { j: 7, scale: 1.7, guards: 4, advance: 0.45, desp: 0.18, parts: [PT('shieldGen', 50, 0, 0.12), PT('gun', -14, -62, 0.12, { k: 'aim', every: 1.8, n: 3, v: 300 }), PT('gun', -14, 62, 0.12, { k: 'fan', every: 2.2, n: 5, arc: 0.7, v: 260 }), PT('arm', 40, -52, 0.12, { k: 'zone', every: 4.5, n: 4, r: 54 }), PT('hangar', 40, 52, 0.12, { every: 6.5, n: 2 })] },
+};
+export const rigOf = id => BOSS_RIG[id] || null;
+// a rigged boss takes longer, so its third star (time) gets more room
+export const parOf = R => R ? Math.round((R.par || 60) * (BOSS_RIG[R.id] ? 1.6 : 1)) : 60;
 
 // ---- badges ----
 // tiered: bronze -> silver -> gold, each a bigger goal with a bigger reward (golds land around days 55-75)
@@ -1098,7 +1167,7 @@ export function finishLeg(jid, li, run = {}) {
     if (!R) continue;
     bossFixed.push(rid);
     const d = duelRec(rid), firstB = !d.beaten, time = +run.bossTime > 0 ? +run.bossTime : 0;
-    const nowB = 1 | (+run.maxHp > 0 && +run.hpEnd / +run.maxHp >= DUEL_STAR_HULL ? 2 : 0) | (time > 0 && time <= R.par ? 4 : 0);
+    const nowB = 1 | (+run.maxHp > 0 && +run.hpEnd / +run.maxHp >= DUEL_STAR_HULL ? 2 : 0) | (time > 0 && time <= parOf(R) ? 4 : 0);
     S.duel[rid] = { beaten: d.beaten || today(), wins: d.wins + 1, stars: d.stars | nowB, best: time > 0 && (d.best == null || time < d.best) ? r2(time, 1) : d.best };
     S.stats.duelWins += 1; addKind('duelWin', 1);
     if (firstB) { grant(R.unlock[0], R.unlock[1]); bossUnlock = { kind: R.unlock[0], id: R.unlock[1] }; bossReward += R.coins; }
@@ -1152,7 +1221,7 @@ export function rivalList() {
     const d = duelRec(r.id);
     return { id: r.id, i, open: rivalOpen(r.id), beaten: !!d.beaten, stars: bits(d.stars), wins: d.wins, best: d.best, fee: 0,
       firstReward: r.coins, rematchReward: Math.round(REMATCH_PAY * r.coins), unlock: { kind: r.unlock[0], id: r.unlock[1] },
-      diff: r.diff, par: r.par, need: r.need, needDone: legsDone(r.need) >= 3, prevBeaten: i === 0 || beaten(RIVALS[i - 1].id), dayBonus: duelDayFree() };
+      diff: r.diff, par: parOf(r), need: r.need, needDone: legsDone(r.need) >= 3, prevBeaten: i === 0 || beaten(RIVALS[i - 1].id), dayBonus: duelDayFree() };
   });
 }
 export const duelDot = () => duelsOpen() && (duelDayFree() || RIVALS.some(r => rivalOpen(r.id) && !beaten(r.id)));
@@ -1175,7 +1244,7 @@ export function finishDuel(rid, run = {}) {
   const dayBonus = duelDayFree() ? reward * (DUEL_DAY_MULT - 1) : 0;
   if (dayBonus) S.duelDay = today();
   const time = +run.time;
-  const now = 1 | (+run.maxHp > 0 && +run.hpEnd / +run.maxHp >= DUEL_STAR_HULL ? 2 : 0) | (time > 0 && time <= R.par ? 4 : 0);
+  const now = 1 | (+run.maxHp > 0 && +run.hpEnd / +run.maxHp >= DUEL_STAR_HULL ? 2 : 0) | (time > 0 && time <= parOf(R) ? 4 : 0);
   const fresh3 = now & ~d.stars, newStars = [0, 1, 2].filter(i => fresh3 & (1 << i));
   const starPay = newStars.length * Math.round(DUEL_STAR_PAY * R.coins);
   const picked = Math.round(num(run.coins) * cm);

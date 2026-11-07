@@ -30,6 +30,8 @@
     <div class="hud-chips">
       <span class="chip shield-chip" id="shieldChip" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-3 8.3-7 10-4-1.7-7-5.4-7-10V6z"/></svg><span data-i18n="h_shield">درع</span><i></i></span>
       <span class="chip rapid-chip" id="rapidChip" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg><span data-i18n="h_rapid">نار سريعة</span><i></i></span>
+      <span class="chip weapon-chip" id="weaponChip" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 14h12l3-3h3v4h-3l-3 3H3z"/></svg><span id="weaponName"></span><i></i></span>
+      <span class="chip wing-chip" id="wingChip" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l6-5v3h10v4H10v3z"/></svg><span id="wingN" dir="ltr"></span></span>
     </div>
   </div>
   <div class="hud-c">
@@ -42,7 +44,7 @@
     <div class="rival-bar" id="rivalBar" role="img" hidden>
       <canvas class="rv-face" id="rvPic" width="72" height="72" aria-hidden="true"></canvas>
       <div class="rv-main">
-        <div class="rv-top"><b id="rvName" dir="auto"></b><span class="rv-phase" id="rvPhase" aria-hidden="true"></span></div>
+        <div class="rv-top"><b id="rvName" dir="auto"></b><span class="rv-parts" id="rvParts" aria-hidden="true" hidden></span><span class="rv-phase" id="rvPhase" aria-hidden="true"></span></div>
         <div class="rv-hp" id="rvHp"><i id="rvFill"></i><i class="rv-sh" id="rvShield" hidden></i></div>
       </div>
     </div>

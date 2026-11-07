@@ -1114,6 +1114,7 @@ function sheetHelp(body) {
   sec(TT('help_s_space', 'في الفضاء', 'Out in space'), [['meteor', 'help_meteor'], ['coins', 'help_coins'], ['pickups', 'help_pickups']]);
   sec(TT('help_s_ship', 'سفينتك', 'Your ship'), [['hull', 'help_hull'], ['shield', 'help_shield'], ['nabeeh', 'help_nabeeh'], ['hangar', 'help_hangar']]);
   sec(TT('help_s_trips', 'الرحلات', 'Journeys'), [['legs', 'help_story'], ['legs', 'help_easy'], ['duels', 'help_bosses'], ['pickups', 'help_rescue'], ['stars', 'help_stars'], ['stars', 'help_medals'], ['legs', 'help_legs'], ['gates', 'help_gates']]);
+  sec(TT('help_s_fight', 'القتال', 'Fighting'), [['duels', 'help_robots'], ['duels', 'help_bigboss'], ['nabeeh', 'help_wings'], ['pickups', 'help_weapons'], ['super', 'help_graze'], ['meteor', 'help_mods']]);
   sec(T('b_duels') + ' · ' + T('b_missions'), [['duels', 'help_duels'], ['ladder', 'help_ladder'], ['boosters', 'help_boosters'], ['mozah', 'help_mozah']]);
 
   body.appendChild(el('p', 'sec-title', T('r_factTitle')));
@@ -1188,6 +1189,9 @@ function rivalHud(r) {
   }
   if (intro !== hc.rvIn) { const b = $('rivalBar'); b.style.opacity = intro.toFixed(2); b.style.transform = intro < 1 && !REDUCED ? 'translateY(' + Math.round((1 - intro) * -24) + 'px)' : ''; hc.rvIn = intro; }
   if (!!r.stun !== hc.rvStun) { $('rivalBar').classList.toggle('stun', !!r.stun); hc.rvStun = !!r.stun; }
+  // v3.1 big bosses: parts left (⚙ 3/4), a shield icon while the shield generator stands
+  const pk = (r.partsN | 0) ? (r.parts | 0) + '/' + (r.partsN | 0) + (r.core ? '' : ' 🛡') : '';
+  if (pk !== hc.rvParts) { const e = $('rvParts'); if (e) { e.hidden = !pk; e.textContent = pk ? '⚙ ' + pk : ''; e.title = T('h_parts'); } hc.rvParts = pk; }
   if (f !== hc.rvF) {
     $('rvFill').style.transform = 'scaleX(' + f.toFixed(4) + ')';
     if (hc.rvF != null && f < hc.rvF && !REDUCED) { const b = $('rivalBar'); b.classList.remove('hit'); void b.offsetWidth; b.classList.add('hit'); }
@@ -1281,6 +1285,12 @@ export function hud(s) {
   }
   const rp = Math.round(clamp(+s.rapid > 1 ? +s.rapid / 6 : +s.rapid || 0, 0, 1) * 50) / 50;
   if (rp !== hc.rp) { const chip = $('rapidChip'); chip.hidden = rp <= 0; if (rp > 0) chip.querySelector('i').style.transform = 'scaleX(' + rp + ')'; hc.rp = rp; }
+  // v3.1: the weapon pickup in use (with its timer) and the wingmen flying with you
+  const wk = s.weapon || null, wf = wk ? Math.round(clamp(+s.weaponF || 0, 0, 1) * 50) / 50 : 0;
+  if (wk !== hc.wk) { const chip = $('weaponChip'); if (chip) { chip.hidden = !wk; chip.dataset.w = wk || ''; if (wk) $('weaponName').textContent = T('wp_' + wk); } hc.wk = wk; hc.wf = -1; }
+  if (wk && wf !== hc.wf) { const chip = $('weaponChip'); if (chip) chip.querySelector('i').style.transform = 'scaleX(' + wf + ')'; hc.wf = wf; }
+  const wn = s.wings | 0;
+  if (wn !== hc.wn) { const chip = $('wingChip'); if (chip) { chip.hidden = wn <= 0; $('wingN').textContent = '×' + wn; chip.setAttribute('aria-label', T('h_wings') + ' ' + wn); } hc.wn = wn; }
 }
 
 // =============================================================================================

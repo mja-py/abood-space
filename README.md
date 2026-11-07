@@ -13,14 +13,39 @@ There are no aliens: the only things in space are rocks, junk left behind in orb
 ![The Amal Beam](screenshots/super-beam.png)
 
 ## How to play
-- **Move:** drag up and down anywhere on the screen (or ↑/↓, W/S). The ship only moves up and down.
-- **Fire:** automatic.
+- **Move:** drag anywhere on the screen (or the arrows / W A S D). The ship flies up, down, forward and back inside the
+  left 40% of the screen.
+- **Fire:** automatic. **Graze:** an enemy shot that skims past without touching you charges the beam.
 - **Super (the Amal Beam):** the big round button at the bottom right (or Space / X) when its ring is full.
-  The beam wipes out everything in its path, meteors included.
 - **Meteors:** a red dashed line and a "!" warn you first, then the meteor charges. Get out of the line.
-  A meteor costs 2 hull points, anything else costs 1. When the hull runs out, the ship goes down.
 - **Pause:** II, or P / Esc.
-- **60 / 30 fps:** flights run at 60 fps. If a phone gets hot, tap the **60** button on the station menu (or the frame rate button on the pause card) to switch to the 30 fps battery saver. The choice is saved on the device.
+
+## Fighting (v3.1)
+- **Rage robots** appear from Venus on. Each journey teaches one new move on its first leg, alone, while Nabeeh
+  explains it, then mixes it with every move learned before. Venus has 1 kind of attack, Neptune has all 6:
+
+  | Journey | New move | Tell |
+  |---|---|---|
+  | Venus | aimed shot | glowing barrel |
+  | Asteroid Belt | charge dash | orange arrows along its lane |
+  | Jupiter | area bomb | a red circle where it will land |
+  | Saturn | laser sweep | two thin lines: where it starts and ends |
+  | Uranus | shield link | a blue cable to a friend (shoot the shielder first) |
+  | Neptune | swarm | three homing mini drones |
+
+  Robots fill a rage meter from time and from hits; when it is full they turn red, move faster and attack more often.
+  Only a few robots may attack at once (2 at Venus, 4 at Neptune), so it stays readable.
+- **Real bosses:** each journey ends with a big machine: the rogue ship is the core, with breakable parts around it:
+  guns, bomb arms (red circles, rings with one gap), a robot hangar that launches minions and rebuilds guard drones,
+  and a shield generator that cuts the damage the core takes to a quarter. Late in the fight the boss moves into your
+  space, and at the end it makes a last stand. Guardians on legs 1 and 2 stay small and gain a guard (Venus on) and a
+  gun (Saturn on).
+- **Wingmen:** every rescued maintenance robot flies with you, shoots, and blocks one hit (2 at a time, 3 with Nabeeh
+  level 5).
+- **Weapon pickups** (about 10 s): spread, piercing laser, homing missiles, saws that cut bullets.
+- **Space weather** from Jupiter on: ion storm, dark sector, magnetic field or solar wind (two on the Hard tier).
+- **Director:** from Venus on, the pressure rises slowly while you fly clean and eases off after hits, with a build-up
+  and relax rhythm. Replays of a finished leg shuffle its waves and set pieces.
 
 ## Journeys (v3)
 Eight journeys of three legs each: Moon → Mars → Venus → Asteroid Belt → Jupiter → Saturn → Uranus → Neptune.
@@ -110,4 +135,5 @@ See [CREDITS.md](CREDITS.md) for third-party licences.
 `window.__game.debug` drives the engine without playing: `start('venus', 1)`, `step(1/60, 600)` advances the simulation
 without animation frames, `jump(120)` moves the leg clock, `skip()` jumps to the WARNING (or ends the boss on screen),
 `piece('corridor')` fires any set piece (`wall squad turrets tether pods scrapRain cascade flare corridor grabber`),
-`winDuel()` fixes the boss, `beats()` lists the leg's timeline, `info()` shows the run.
+`winDuel()` fixes the boss, `beats()` lists the leg's timeline, `info()` shows the run. v3.1 adds `robot({ atk:['bomb'] })`,
+`weapon('saw')`, `wing()`, `combat()` (robots, zones, tokens), `killPart('shieldGen')`, `setXY(x, y)` and `rival()` with parts and guards.
