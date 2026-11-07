@@ -514,11 +514,20 @@ export function renderMenu() {
     b.title = T('m_legOf', li, 3) + ' · ' + nm + (ok ? ' · ' + (d ? T('m_replay') : T('m_reward', rw)) + ' · ' + T('a_stars', starCount(st)) : ' · ' + T('m_locked'));
     b.setAttribute('aria-label', b.title);
     const num = el('i', null, d ? '✓' : nf(li + 1)); b.appendChild(num);
-    const tx = el('span', 'ltx'); tx.appendChild(el('span', 'lname', nm)); if (ok) tx.appendChild(starRow(st, 'lst')); b.appendChild(tx);
+    const tx = el('span', 'ltx'); tx.appendChild(el('span', 'lname', nm));
+    if (ok) { const lr = el('span', 'lrow'); lr.appendChild(starRow(st, 'lst')); const md = MM('legMedals', selJ, li); if (md) lr.appendChild(medalRow(md, [], false, true)); tx.appendChild(lr); }
+    b.appendChild(tx);
     b.onclick = () => { if (!ok) return; selL = li; hook('onSelect', selJ, selL); renderMenu(); };
     row.appendChild(b);
   }
-  $('launchBtn').setAttribute('aria-label', T('b_launch') + ' · ' + jName(selJ) + ' · ' + T('m_legOf', selL, 3));
+  // v3 Hard tier: once a journey has all 12 medals, a switch next to Launch (faster, tougher, pays ×2)
+  const hb = $('hardBtn'), hOpen = !!MM('hardOpen', selJ), hOn = hOpen && !!MM('hardOn', selJ);
+  if (hb) {
+    hb.hidden = !hOpen;
+    if (hOpen) { hb.textContent = (hOn ? '★ ' : '') + T('b_hard'); hb.classList.toggle('on', hOn); hb.setAttribute('aria-pressed', hOn ? 'true' : 'false'); hb.title = T('hd_note'); hb.onclick = () => { MM('setHard', selJ, !hOn); hook('sfx', 'chime'); note(hOn ? T('b_hardOff') : T('hd_note')); renderMenu(); }; }
+  }
+  $('launchBtn').classList.toggle('hard', hOn);
+  $('launchBtn').setAttribute('aria-label', T('b_launch') + ' · ' + jName(selJ) + ' · ' + T('m_legOf', selL, 3) + (hOn ? ' · ' + T('b_hard') : ''));
   boostRow($('boostRow'));
   $('dotMissions').hidden = !(M.missionsReady() > 0 || M.loginReady());
   // duels tile: locked until Mars is done
@@ -1306,8 +1315,9 @@ function resultParts(r) {
 }
 // v3 medals: finish, no damage, every pod rescued, score
 const MEDAL_IDS = ['finish', 'noDamage', 'rescue', 'score'];
-function medalRow(arr, isNew = [], big = false) {
-  const s = el('span', 'medals4' + (big ? ' big' : '')); s.setAttribute('aria-hidden', 'true');
+function medalRow(arr, isNew = [], big = false, small = false) {
+  const s = el('span', 'medals4' + (big ? ' big' : small ? ' sm' : '')); s.setAttribute('aria-hidden', 'true');
+
   MEDAL_IDS.forEach((id, k) => { const i = el('i', 'medal m-' + id + (arr && arr[k] ? ' on' : '') + (isNew.includes(k) ? ' new' : '')); if (isNew.includes(k)) i.style.animationDelay = (1.4 + isNew.indexOf(k) * 0.3) + 's'; s.appendChild(i); });
   return s;
 }

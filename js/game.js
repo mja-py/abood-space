@@ -5,6 +5,7 @@ import { T, TL, nf, lang, setLang, applyI18n } from './i18n.js?v=__BUILD__';
 import * as I18N from './i18n.js?v=__BUILD__';
 import * as A from './art.js?v=__BUILD__';
 import * as UI from './ui.js?v=__BUILD__';
+import * as PZ from './pieces.js?v=__BUILD__';
 
 // ---------------------------------------------------------------------------------------------
 // Core constants and helpers
@@ -31,7 +32,8 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h)); return c; };
 function compact(a, keep) { let j = 0; for (let i = 0; i < a.length; i++) { const v = a[i]; if (keep(v)) a[j++] = v; } a.length = j; } // in-place filter, no garbage
-const nextFrame = () => new Promise(r => requestAnimationFrame(() => r()));
+// a hidden tab gets no animation frames, so boot never waits on one for more than 60 ms
+const nextFrame = () => new Promise(r => { let done = false; const f = () => { if (!done) { done = true; r(); } }; requestAnimationFrame(f); setTimeout(f, 60); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const easeOut = f => 1 - Math.pow(1 - clamp(f, 0, 1), 3);
 const easeInOut = f => { f = clamp(f, 0, 1); return f * f * (3 - 2 * f); };
@@ -411,7 +413,7 @@ const JUNK = {
   drone: { r: 17, hp: 3, pts: 30, sg: 0.055 },
   dish: { r: 20, hp: 3, pts: 30, sg: 0.055 },
 };
-const MIX_KEYS = ['rockS', 'rockM', 'rockL', 'ice', 'crystal', 'panel', 'tank', 'drone', 'dish'];
+const MIX_KEYS = ['rockS', 'rockM', 'rockL', 'ice', 'crystal', 'panel', 'tank', 'drone', 'dish', 'turret'];
 const DUEL_GUN = Array.isArray(M.DUEL_GUN) ? M.DUEL_GUN : [1, 1.6, 2.1, 2.5, 2.8];
 const BEAM_DUEL = typeof M.BEAM_DUEL === 'number' ? M.BEAM_DUEL : 0.10;
 const FX_DEF = { trail: ['#ffb04a', '#ff8a2a', '#ffd27a'], particle: 'flame', bolt: 'blaster', aura: null };
@@ -468,6 +470,7 @@ function resetWorld() {
   objs.length = meteors.length = bolts.length = picks.length = parts.length = texts.length = lasers.length = 0;
   eshots.length = emobs.length = elasers.length = 0;
   rv = null;
+  if (run) { run.held = null; run.flare = null; }
 }
 // shared by legs and duels: stats, boosters (DESIGN §6, §8.4), ship, Nabeeh, clocks
 function beginRun() {
@@ -638,6 +641,8 @@ function spawnKind(k, y) {
   else if (k === 'ice') { const s = Math.random() < 0.35 ? 'S' : Math.random() < 0.7 ? 'M' : 'L'; o = makeRock('ice', s, 0, 0); }
   else if (k === 'crystal') o = makeRock('crystal', 'M', 0, 0);
   else if (JUNK[k]) o = makeJunk(k, 0, 0);
+  else if (k === 'turret') o = makeTurret();
+  else if (k === 'grabber') o = makeGrabber();
   else return null;
   o.x = W + o.r + 12; o.y = y != null ? y : freeY(o.r); o.by = o.y;
   objs.push(o); return o;
@@ -700,10 +705,149 @@ function beat(b) {
     default: errOnce('beat?' + b.kind, new Error('unknown beat ' + b.kind));
   }
 }
-// phase 2 set pieces (waves, events, rescue pods) are filled in below; until then a wave is a shower of rocks
+// ---------------------------------------------------------------------------------------------
+// v3 set pieces: waves (wall, squad, turrets, tether), events (scrapRain, cascade, flare, corridor, grabber), rescue pods.
+// Everything is an ordinary object in `objs` (bolts, the beam, Nabeeh and the hull all work on it); the ones that move
+// on their own carry o.move(o, dt), the ones with their own look carry o.draw(c, o). o.ghost = bolts and the beam pass
+// through; o.harmless = never hurts the hull (its own collision, if any, lives in o.move).
+const PIECE = { turret: { r: 22, hp: 5, pts: 60, sg: 0.06 }, grabber: { r: 20, hp: 16, pts: 80, sg: 0.06 } };
+function makeTurret() {
+  const z = PIECE.turret, L = run.L;
+  return { type: 'junk', kind: 'turret', size: 'M', x: 0, y: 0, by: 0, r: z.r, hp: z.hp * (run.hpMul || 1), pts: z.pts, sg: z.sg,
+    vx: -L.speed * 0.5, vy: 0, rot: 0, vr: 0, seed: Math.floor(Math.random() * 9999), flash: 0, dead: false, killT: 0, ph: 0, wob: 0,
+    aim: Math.PI, tell: 0, fireT: rnd(1.6, 2.6), draw: (c, o) => PZ.drawTurret(c, o, t), move: turretMove };
+}
+function turretMove(o, dt) {
+  o.x += o.vx * dt; o.y += Math.sin(t * 0.7 + o.seed) * 6 * dt;
+  if (!ship.alive || st !== 'play' || o.x > W - 20 || o.x < ship.x + 50) { o.tell = 0; return; }
+  o.aim = Math.atan2(ship.y - o.y, ship.x - o.x);
+  o.fireT -= dt; const every = run.AS && run.AS.bossAtk > 1 ? 2.6 * run.AS.bossAtk : 2.6;
+  o.tell = clamp(1 - o.fireT / 0.8, 0, 1);
+  if (o.fireT <= 0) { o.fireT = every; shot('pellet', o.x + Math.cos(o.aim) * 22, o.y + Math.sin(o.aim) * 22, o.aim, 170); const s = eshots[eshots.length - 1]; if (s) s.src = 'turret'; sfx.eshot(); }
+}
+function makeGrabber() {
+  const z = PIECE.grabber;
+  const o = { type: 'junk', kind: 'grabber', size: 'M', x: 0, y: 0, by: 0, r: z.r, hp: z.hp * (run.hpMul || 1), pts: z.pts, sg: z.sg,
+    vx: -120, vy: 0, rot: 0, vr: 0, seed: Math.floor(Math.random() * 9999), flash: 0, dead: false, killT: 0, ph: 0, wob: 0,
+    holding: false, draw: (c, o) => PZ.drawGrabber(c, o, t), move: grabberMove };
+  return o;
+}
+function grabberMove(o, dt) {
+  if (!o.holding) {
+    const tx = bot.x + 26, ty = bot.y, dx = tx - o.x, dy = ty - o.y, d = Math.hypot(dx, dy) || 1, v = 300;
+    o.x += dx / d * v * dt; o.y += dy / d * v * dt;
+    if (o.x > W + 40 && d > 60) o.x = W + 40;
+    if (d < 16 && !run.held && st === 'play') { o.holding = true; run.held = o; sfx.plate(); say('bot_grabbed', true); say2('f_grabbed', bot.x, bot.y - 30, '#ffb3b3'); mood('alert', 3); }
+  } else {
+    // it hauls Nabeeh up and away to the right, in front of the guns: fly up and shoot it before it leaves
+    o.x += 62 * dt; o.y += (Y_MIN + 14 - o.y) * Math.min(1, dt * 0.9);
+    if (o.x > W + 40) freeBot(o);
+  }
+}
+function freeBot(o) {
+  if (run.held !== o) return;
+  run.held = null; o.holding = false;
+  if (!o.dead) return;
+  sparks(bot.x, bot.y, 12, '#9ff0ff', 160); ring(bot.x, bot.y, 36, '#9ff0ff', 0.35);
+  say('bot_freed', true); say2('f_freed', bot.x, bot.y - 30, '#9ff0ff'); mood('happy', 2);
+}
+// a squad drone: flies in along a sine, then dives at where the ship was, then leaves
+function squadMove(o, dt) {
+  if (o.st === 'in') { o.x += o.vx * dt; o.ph += dt * 2.5; o.y = o.by + Math.sin(o.ph) * 26; if (o.x < W * 0.6) { o.st = 'dive'; const dx = ship.x - o.x, dy = ship.y - o.y, d = Math.hypot(dx, dy) || 1, v = run.L.speed * 2.4; o.dvx = dx / d * v; o.dvy = dy / d * v; } }
+  else { o.x += o.dvx * dt; o.y += o.dvy * dt; o.dvy *= Math.exp(-0.5 * dt); }
+}
+// a tethered junk piece swings on a cable under its anchor; cut the anchor and it floats off
+function tetherMove(o, dt) {
+  const a = o.anchor; if (!a || a.dead) { o.move = null; o.anchor = null; o.vx = -run.L.speed * 0.9; o.vy = rnd(-30, 30); return; }
+  o.ang += o.angV * dt; o.angV -= Math.cos(o.ang) * 2.2 * dt;
+  o.x = a.x + Math.cos(o.ang) * o.len; o.y = a.y + Math.sin(o.ang) * o.len;
+}
+// a station wall segment: a rectangle the hull cannot cross (o.y0..o.y1, o.x..o.x+o.w)
+function wallMove(o, dt) {
+  o.x += o.vx * dt;
+  if (o.x + o.w < -20) { o.dead = true; return; }
+  if (!ship.alive || st !== 'play') return;
+  const r = shipR() * 0.8 * hurtK(), cx = clamp(ship.x, o.x, o.x + o.w), cy = clamp(ship.y, o.y0, o.y1), dx = ship.x - cx, dy = ship.y - cy;
+  if (dx * dx + dy * dy < r * r) {
+    if (ship.inv <= 0 && !debug.invincible) hurtShip(1, 'wall');
+    const push = o.top ? o.y1 + r + 4 : o.y0 - r - 4; ship.y = ship.ty = clamp(push, Y_MIN, Y_MAX); ship.vy = 0;
+  }
+}
+function spawnWall(gap, k) {
+  const gc = clamp((k ? rnd(Y_MIN + 50, Y_MAX - 50) : ship.y) + rnd(-40, 40), Y_MIN + 60, Y_MAX - 60), x0 = W + 30 + k * 150;
+  for (let y = Y_MIN - 6; y <= Y_MAX + 6; y += 44) {
+    if (Math.abs(y - gc) < gap / 2) continue;
+    const o = makeJunk('panel', x0, y); o.vx = -run.L.speed * 1.05; o.vy = 0; o.vr = 0.3; o.wallSeg = true; objs.push(o);
+  }
+}
 function setPiece(b) {
-  if (typeof setPiece2 === 'function' && setPiece2(b)) return;
-  if (b.kind === 'wave') { const n = (b.n | 0) * 3 || 6; for (let i = 0; i < n; i++) later(i * 0.5, () => spawnKind(i % 3 ? 'rockS' : 'rockM', laneY(i, 5))); }
+  const L = run.L, j = run.ji || 0;
+  if (b.kind === 'pods') {
+    for (let i = 0; i < (b.n | 0 || 1); i++) later(i * (b.over || 1), () => { const p = addPick('pod', W + 24, rnd(Y_MIN + 30, Y_MAX - 30), 1); if (p) { p.vx = -L.speed * 0.55; p.vy = 0; p.life = 26; } });
+    return;
+  }
+  if (b.kind === 'wave') {
+    switch (b.form) {
+      case 'wall': for (let k = 0; k < (b.n | 0 || 1); k++) spawnWall(b.gap || 150, k); break;
+      case 'squad': { const n = b.n | 0 || 4, top = Math.random() < 0.5, by = top ? rnd(Y_MIN + 30, 150) : rnd(250, Y_MAX - 30);
+        for (let i = 0; i < n; i++) later(i * 0.32, () => { const o = makeJunk('drone', W + 30, by); o.hp = 2 * (run.hpMul || 1); o.vx = -L.speed * 1.5; o.st = 'in'; o.by = by; o.ph = i * 0.9; o.move = squadMove; o.squad = true; objs.push(o); }); break; }
+      case 'turrets': { const n = b.n | 0 || 1; for (let i = 0; i < n; i++) later(i * 1.5, () => spawnKind('turret', laneY(i * 2 + 1, 4))); say2('f_turret', ship.x + 40, ship.y - 40, '#ffb3b3'); break; }
+      case 'tether': { const n = b.n | 0 || 1;
+        for (let i = 0; i < n; i++) later(i * 2.5, () => {
+          const a = spawnKind('dish', laneY(i, 2) - 40); if (!a) return; a.vx = -L.speed * 0.85; a.vy = 0;
+          const ch = makeJunk('tank', a.x, a.y + 80); ch.vx = a.vx; ch.anchor = a; ch.len = 85; ch.ang = Math.PI / 2 + rnd(-0.8, 0.8); ch.angV = rnd(-1, 1); ch.move = tetherMove; ch.tether = true; objs.push(ch);
+        }); break; }
+      default: { const n = (b.n | 0) * 3 || 6; for (let i = 0; i < n; i++) later(i * 0.5, () => spawnKind(i % 3 ? 'rockS' : 'rockM', laneY(i, 5))); }
+    }
+    return;
+  }
+  if (b.kind !== 'event') return;
+  const dur = b.dur || 6;
+  switch (b.ev) {
+    case 'scrapRain': { say2('f_scrapRain', ship.x + 40, ship.y - 44, '#ffe066'); safe(UI.note, tt('f_scrapRain'));
+      const n = Math.floor(dur / 0.3); for (let i = 0; i < n; i++) later(i * 0.3, () => { const o = spawnKind('rockS'); if (o) { o.harmless = true; o.coinSure = true; o.pts = 5; o.vx *= 1.25; o.flash = 0.3; } }); break; }
+    case 'cascade': { say2('f_cascade', ship.x + 40, ship.y - 44, '#ffd9a0'); const n = 10 + j * 2;
+      for (let i = 0; i < n; i++) later(i * (4 / n), () => { const up = i % 2 === 0, o = spawnKind(i % 4 === 0 ? 'rockM' : 'rockS', up ? Y_MAX + 20 : Y_MIN - 20); if (o) { o.vy = (up ? -1 : 1) * rnd(60, 130); o.vx *= 1.1; } }); break; }
+    case 'flare': { say2('f_flare', ship.x + 40, ship.y - 44, '#ffb347'); say('bot_flare', true); safe(UI.note, tt('f_flare'));
+      for (let i = 0; i < 3; i++) later(i * 0.4, () => { const o = spawnKind('rockL', laneY(i, 3)); if (o) { o.vx = -L.speed * 0.55; o.vy = 0; o.hp *= 2; o.shelter = true; } });
+      const warn = Math.max(3, dur * 0.6); run.flare = { t: 0, warn, flash: 0, hit: false, dur: 1.4 }; sfx.warn(); mood('alert', warn); break; }
+    case 'corridor': { say2('f_corridor', ship.x + 40, ship.y - 44, '#ffd9a0'); say('bot_corridor', true); safe(UI.note, tt('f_corridor'));
+      const gh = Math.max(120, 190 - j * 9), w = 250, step = w / (L.speed * 1.0), n = Math.max(3, Math.round(dur / step)), ph = rnd(0, TAU);
+      for (let i = 0; i < n; i++) later(i * step, () => {
+        const gc = 200 + 85 * Math.sin(ph + i * 0.75), x = W + 20;
+        for (const top of [true, false]) {
+          const y0 = top ? -10 : gc + gh / 2, y1 = top ? gc - gh / 2 : H + 10;
+          objs.push({ type: 'wall', kind: 'wall', size: 'L', x, y: (y0 + y1) / 2, y0, y1, w, top, r: 0, hp: Infinity, pts: 0, sg: 0, vx: -L.speed * 1.0, vy: 0, rot: 0, vr: 0, seed: i, flash: 0, dead: false, killT: 0,
+            ghost: true, harmless: true, move: wallMove, draw: (c, o) => PZ.drawWall(c, o, t) });
+        }
+      }); break; }
+    case 'grabber': { later(0.5, () => { const o = spawnKind('grabber', Y_MIN - 10); if (o) { o.x = W * 0.75; o.y = -30; say2('f_grabbed', ship.x + 40, ship.y - 44, '#ffb3b3'); } }); break; }
+  }
+}
+// the solar flare timer: a warning glow from the right, then a flash that hurts a hull with no big rock in front of it
+function updateFlare(dt) {
+  const F = run.flare; if (!F) return;
+  F.t += dt;
+  if (F.t >= F.warn) {
+    const k = F.t - F.warn; F.flash = k < 0.3 ? k / 0.3 : clamp(1 - (k - 0.3) / (F.dur - 0.3), 0, 1);
+    if (!F.hit && k > 0.1 && ship.alive && st === 'play') {
+      F.hit = true;
+      let safe_ = false;
+      for (const o of objs) if (!o.dead && o.shelter && o.x > ship.x && o.x - ship.x < 230 && Math.abs(o.y - ship.y) < o.r + 6) { safe_ = true; break; }
+      if (safe_) { floatText(tt('f_shield'), ship.x + 30, ship.y - 40, '#9ff0ff', 16); mood('happy', 1.5); }
+      else if (ship.inv <= 0 && !debug.invincible) hurtShip(1, 'flare');
+      for (const o of objs) if (!o.dead && !o.ghost && o.type === 'rock' && o.size === 'S') kill(o, 'meteor');
+      shake(6); sfxT('boomL', 0.6, 0.8, 0.5);
+    }
+    if (k >= F.dur) run.flare = null;
+  }
+}
+function drawPiecesUnder(c) {
+  for (const o of objs) if (!o.dead && o.tether && o.anchor && !o.anchor.dead) PZ.drawTether(c, o.anchor.x, o.anchor.y, o.x, o.y, t);
+}
+function drawPiecesOver(c) {
+  const F = run.flare; if (!F) return;
+  PZ.drawFlare(c, W, H, F.t < F.warn ? clamp(F.t / F.warn, 0, 1) : 1 - F.flash * 0.5, F.flash, t);
 }
 function bossWarn(id) {
   const name = rvName(id);
@@ -750,7 +894,7 @@ function kill(o, src) {
     ring(o.x, o.y, 110, '#ff9a3c', 0.5);
     sfx.tank(); shake(8); hitStopMs(40);
     for (const n of objs) {
-      if (n === o || n.dead || n.killT > 0) continue;
+      if (n === o || n.dead || n.killT > 0 || n.ghost) continue;
       const dx = n.x - o.x, dy = n.y - o.y, d = Math.hypot(dx, dy);
       // G5: only a scoring blast chains as 'blast'; a meteor or a ram chain pays nothing
       if (d < 95 + n.r) { n.killT = 0.07 + d / 1100; n.chainSrc = scoring ? 'blast' : 'chain0'; chained = true; }
@@ -807,7 +951,8 @@ function checkSuperFull() {
   if (superF >= 1 && !superWasFull) { superWasFull = true; sfx.superready(); mood('happy', 1.2); if (ship && st === 'play') say2('f_superReady', ship.x + 40, ship.y + 42, '#ffe066', 17); }
 }
 const DROPS = Object.assign({
-  coin: { rockS: 0.10, rockM: 0.22, rockL: 0.40, ice: 0.15, crystal: 0, panel: 0.30, tank: 0.25, drone: 0.45, dish: 0.40 },
+  coin: { rockS: 0.10, rockM: 0.22, rockL: 0.40, ice: 0.15, crystal: 0, panel: 0.30, tank: 0.25, drone: 0.45, dish: 0.40, turret: 0.6, grabber: 0.7 },
+
   crystal: [2, 4], crystalValue: 2, pickup: 0.05,
   pickWeights: { cell: 2, rapid: 2, repair: 2, shield: 1 },
   duel: { per10: 3, burst: 20 },
@@ -816,6 +961,7 @@ function dropKey(o) { return o.type === 'junk' ? o.kind : o.kind === 'rock' ? 'r
 function drops(o) {
   let n = 0, val = 1;
   if (o.kind === 'crystal') { const c = DROPS.crystal || [2, 4]; n = c[0] + Math.floor(Math.random() * (c[1] - c[0] + 1)) + (S.crystalPlus | 0); val = DROPS.crystalValue || 2; }
+  else if (o.coinSure) n = 1;
   else n = Math.random() < ((DROPS.coin || {})[dropKey(o)] || 0) * (run.coinMul || 1) ? 1 : 0;
   for (let i = 0; i < n; i++) addPick('coin', o.x, o.y, val);
   const pc = (DROPS.pickup || 0.05) * (run.pickMul || 1) * (o.size === 'S' ? 0.25 : 1);
@@ -836,6 +982,14 @@ function addPick(kind, x, y, val) {
   picks.push(p); return p;
 }
 function collect(p) {
+  if (p.kind === 'pod') { // v3: a stranded maintenance robot, rescued by flying over it
+    run.rescued++; sfx.pickup(); sfx.coin(3);
+    sparks(p.x, p.y, 14, '#7dff9a', 140); ring(p.x, p.y, 40, '#7dff9a', 0.4);
+    addKill(50, p.x, p.y);
+    say2(run.rescueTotal > 0 ? `${tt('f_rescued')} ${run.rescued}/${run.rescueTotal}` : tt('f_rescued'), ship.x + 30, ship.y + 40, '#7dff9a');
+    say('bot_rescue', true); mood('happy', 1.5);
+    return;
+  }
   if (p.kind === 'coin') {
     run.coins += p.val;
     run.coinChain = run.coinChainT > 0 ? run.coinChain + 1 : 0; run.coinChainT = 0.5;
@@ -1437,6 +1591,8 @@ function sim(dt) {
 
   updateShip(dt);
   updateObjs(dt);
+  if (run.flare) updateFlare(dt);
+  if (run.held && run.held.dead) freeBot(run.held);
   if (rv) updateRival(dt);
   updateEnemies(dt);
   if (!duel) updateMeteors(dt);
@@ -1488,7 +1644,7 @@ function updateShip(dt) {
     if (beamT > 0) {
       beamT -= dt;
       const b = beamRect();
-      for (const o of objs) if (!o.dead && circRect(o.x, o.y, o.r, b)) kill(o, 'beam');
+      for (const o of objs) if (!o.dead && !o.ghost && circRect(o.x, o.y, o.r, b)) kill(o, 'beam');
       for (const m of meteors) if (!m.dead && m.phase === 'go' && circRect(m.x, m.y, m.r, b)) killMeteor(m);
       if (rv) beamDuel(dt, b);
       if (Math.random() < 0.5 * FX) addP(P_SPARKLE, rnd(ship.x + 40, W), ship.y + rnd(-30, 30), rnd(-80, 80), rnd(-60, 60), 0.4, rnd(5, 9), pick(['#fff6c2', '#9ff0ff']), 30);
@@ -1623,7 +1779,7 @@ function updateMeteors(dt) {
     for (const o of objs) {
       if (o.dead) continue;
       const rr = o.r + m.r, dx = o.x - m.x, dy = o.y - m.y;
-      if (dx * dx + dy * dy < rr * rr) kill(o, 'meteor');
+      if (!o.ghost && dx * dx + dy * dy < rr * rr) kill(o, 'meteor');
     }
     // G3: overlapping the ship is never a dodge, even while it blinks after a hit
     if (ship.alive && st === 'play' && !m.hitShip) {
@@ -1654,7 +1810,7 @@ function updatePicks(dt) {
     const coin = p.kind === 'coin';
     const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy) || 1;
     // magnet: coins (power-ups too with the magnet ✦); Nabeeh's vacuum takes coins
-    let pull = p.pulled || (ship.alive && d < mag && (coin || pullAll));
+    let pull = p.pulled || (ship.alive && d < mag && (coin || (pullAll && p.kind !== 'pod')));
     if (!pull && coin && vac > 0 && bot && Math.hypot(bot.x - p.x, bot.y - p.y) < vac) pull = true;
     // Magna's pulse: coins on screen fly to her and are lost when they reach her
     if (pulse && coin && !(pull && d < 60)) {
@@ -1686,6 +1842,7 @@ function updateBot(dt) {
   // the fixed cinematic: Nabeeh flies over and plugs into the rival
   const plug = rv && run.ds === 'fixed' && run.dsT > 0.2 && run.dsT < 1.8;
   if (plug) { tx = rv.x - rv.r - 16; ty = rv.y - 8; }
+  if (run.held && !run.held.dead) { tx = run.held.x - 30; ty = run.held.y + 4; }   // v3: a grabber has Nabeeh
   const k = plug ? 60 : 38, dmp = 2 * Math.sqrt(k) * 0.75;
   bot.vx += ((tx - bot.x) * k - bot.vx * dmp) * dt; bot.vy += ((ty - bot.y) * k - bot.vy * dmp) * dt;
   bot.x += bot.vx * dt; bot.y += bot.vy * dt + Math.sin(t * 2.4) * 6 * dt;
@@ -1712,7 +1869,7 @@ function updateBot(dt) {
         for (const m of emobs) { if (m.dead || used.includes(m)) continue; const d = (m.x - ship.x) ** 2 + (m.y - ship.y) ** 2; if (d < bd) { bd = d; best = m; kind = 'mob'; } }
       }
       if (!best && run.ds === 'fight' && rv.invT <= 0) { best = rv; kind = 'rival'; }
-      if (!best) { bd = 1e9; for (const o of objs) { if (o.dead || o.x > W - 6 || o.x < ship.x - 20 || used.includes(o)) continue; const d = (o.x - bot.x) ** 2 + (o.y - bot.y) ** 2; if (d < bd) { bd = d; best = o; kind = 'obj'; } } }
+      if (!best) { bd = 1e9; for (const o of objs) { if (o.dead || o.ghost || o.x > W - 6 || o.x < ship.x - 20 || used.includes(o)) continue; const d = (o.x - bot.x) ** 2 + (o.y - bot.y) ** 2; if (d < bd) { bd = d; best = o; kind = 'obj'; } } }
       if (!best) break;
       if (kind !== 'rival') used.push(best);
       n++;
@@ -1727,7 +1884,7 @@ function updateBot(dt) {
   for (let s = 0; s < shots; s++) {
     let best = null, bd = 1e9;
     for (const o of objs) {
-      if (o.dead || o.x > W - 6 || o.x < ship.x - 20 || used.includes(o)) continue;
+      if (o.dead || o.ghost || o.x > W - 6 || o.x < ship.x - 20 || used.includes(o)) continue;
       const d = (o.x - bot.x) ** 2 + (o.y - bot.y) ** 2; if (d < bd) { bd = d; best = o; }
     }
     if (!best) break;
@@ -1786,6 +1943,7 @@ function drawWorld(c) {
   for (const p of picks) {
     const bob = p.kind === 'coin' ? 0 : Math.sin(t * 4 + p.ph) * 3;
     if (p.life < 2 && Math.floor(p.life * 8) % 2) continue;
+    if (p.kind === 'pod') { try { PZ.drawPod(c, p.x, p.y, t, p.ph); } catch (e) { errOnce('pod', e); } continue; }
     safe(A.drawPickup, c, p.kind, p.x, p.y + bob, t + p.ph);
   }
   const pal = J.theme.rock, ipal = J.theme.ice || J.theme.rock;
@@ -2146,6 +2304,8 @@ window.__game = {
     fillSuper() { superF = 1; checkSuperFull(); },
     super: () => { superF = 1; checkSuperFull(); return doSuper(); },
     spawn(kind = 'rockM', y) { if (!run) return null; return spawnKind(kind, y); },
+    step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) { try { update(dt); } catch (e) { errOnce('update', e); } } try { render(); hudNow(); } catch (e) { errOnce('render', e); } return run ? run.elapsed : 0; }, // headless tests
+    piece(b) { if (!run || st !== 'play') return false; setPiece(typeof b === 'string' ? (b === 'pods' ? { kind: 'pods', n: 1 } : ['wall', 'squad', 'turrets', 'tether'].includes(b) ? { kind: 'wave', form: b, n: 1 } : { kind: 'event', ev: b, dur: 8 }) : b); return true; },
     meteor(y) { if (run && st === 'play' && run.mode !== 'duel') spawnMeteor(y); },
     hurt(n = 1) { if (ship) return hurtShip(n); },
     pickup(kind = 'coin', pull = false) { if (!run) return; const p = addPick(kind, ship.x + 120, ship.y, 1); if (p && pull) p.pulled = true; },

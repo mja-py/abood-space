@@ -539,6 +539,10 @@ h2{font-size:34px}
 .medal.m-finish::before{content:"✓"} .medal.m-noDamage::before{content:"♥"} .medal.m-rescue::before{content:"☺"} .medal.m-score::before{content:"★"}
 .medals4.big{gap:6px;margin-top:4px} .medals4.big .medal{width:26px;height:26px;font-size:14px}
 .medal.new{animation:starPop .6s cubic-bezier(.2,1.7,.4,1) both}
+.medals4.sm{gap:2px} .medals4.sm .medal{width:11px;height:11px;font-size:6px} .medals4.sm .medal::after{inset:1.5px}
+.leg .lrow{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.hardbtn{flex:none;padding:6px 10px;font-size:14px} .hardbtn.on{background:#ffd1e0;box-shadow:inset 0 0 0 2px var(--scarf),0 3px 0 var(--ink)}
+.btn.launch.hard{background:#c8202b}
 #note{position:fixed;
 left:50%;transform:translateX(-50%);top:calc(56px + env(safe-area-inset-top,0px));z-index:85;background:var(--ink);color:var(--cream);border:2px solid rgba(47,212,230,.6);border-radius:12px;padding:5px 14px;font-weight:700;font-size:15px;max-width:calc(100% - 32px);text-align:center;box-shadow:0 0 12px rgba(47,212,230,.3);pointer-events:none}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:84;background:var(--cream);border:2px solid var(--ink);border-radius:14px;box-shadow:0 3px 0 var(--ink);
