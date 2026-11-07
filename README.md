@@ -99,7 +99,10 @@ python3 -m http.server 8000
 
 Then open http://localhost:8000.
 
-Every push to `main` runs `.github/workflows/pages.yml` (the same workflow as Run, Abood!). It stamps the commit id into `sw.js` and publishes the game to the `gh-pages` branch. If the site does not appear after the first deploy, open **Settings → Pages** and set **Source** to **Deploy from a branch**, branch **gh-pages**, folder **/ (root)**.
+Publishing: `./deploy.sh` stamps the commit id into every `__BUILD__` (cache names and asset URLs), builds the site into
+an orphan `gh-pages` branch and force-pushes it. GitHub Pages serves that branch (**Settings → Pages**, source
+**Deploy from a branch**, branch **gh-pages**, folder **/ (root)**). The original repo did the same from a workflow on every
+push; this repo keeps it as a script because pushing workflow files needs a token with the `workflow` scope.
 
 See [CREDITS.md](CREDITS.md) for third-party licences.
 
