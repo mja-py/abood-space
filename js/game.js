@@ -20,7 +20,10 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
 
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d', { alpha: false });
-const H = 400, MINW = 640, SHIP_X = 110, Y_MIN = 40, Y_MAX = 370;
+const H = 400, SHIP_X = 110, Y_MIN = 40, Y_MAX = 370;
+// v3.2: one play-field shape on every screen (the phone's, about 2.15:1). Taller screens (iPad, square, 16:9) get bands
+// above and below, wider ones bands at the sides, so dodging room and crossing times are the same everywhere.
+const WORLD_W = 860, WORLD_MAX = 900;
 const INK = '#1c1530', FONT = '"Baloo Bhaijaan 2", "Trebuchet MS", Tahoma, system-ui, sans-serif';
 const TAU = Math.PI * 2;
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -50,7 +53,7 @@ const girl = () => { safe(I18N.setGirl, safe(M.char) === 'mozah'); };
 const QDPR = [2, 1.5, 1.15, 0.85];
 let qLevel = COARSE ? 1 : 0;
 if ((navigator.deviceMemory || 8) <= 3) qLevel = 2;
-let W = 700, scale = 1, offY = 0, RES = 1, FX = 1, MAXP = 300;
+let W = WORLD_W, scale = 1, offY = 0, offX = 0, RES = 1, FX = 1, MAXP = 300;
 let pauseDrawn = false; // paused: one frame is drawn on entry, then the canvas is left alone (G8)
 
 function resize() {
@@ -59,8 +62,11 @@ function resize() {
   const cw = Math.round(w * d), ch = Math.round(h * d);
   if (cv.width !== cw) cv.width = cw;
   if (cv.height !== ch) cv.height = ch;
-  scale = h / H; W = w / scale; offY = 0;
-  if (W < MINW) { scale = w / MINW; W = MINW; offY = (h / scale - H) / 2; } // narrow screens: fit width, letterbox centred
+  scale = h / H; W = w / scale; offY = 0; offX = 0;
+  if (W < WORLD_W) { scale = w / WORLD_W; W = WORLD_W; offY = (h / scale - H) / 2; }          // taller: fit width, bands top and bottom
+  else if (W > WORLD_MAX) { W = WORLD_MAX; offX = (w / scale - WORLD_MAX) / 2; }            // wider: fit height, bands at the sides
+  document.documentElement.style.setProperty('--band-y', Math.max(0, offY * scale).toFixed(1) + 'px');
+  document.documentElement.style.setProperty('--band-x', Math.max(0, offX * scale).toFixed(1) + 'px');
   RES = scale * d;
   FX = qLevel >= 2 ? 0.6 : 1; MAXP = Math.round((COARSE ? 240 : 320) * FX);
   pauseDrawn = false;
@@ -364,7 +370,7 @@ function flushTrack() { for (const k in pend) { if (pend[k] > 0) safe(M.track, k
 const keys = { up: false, down: false, left: false, right: false };
 let dragId = null, dragY = 0, dragX = 0;
 function logicalY(e) { const r = cv.getBoundingClientRect(); return (e.clientY - r.top) / scale - offY; }
-function logicalX(e) { const r = cv.getBoundingClientRect(); return (e.clientX - r.left) / scale; }
+function logicalX(e) { const r = cv.getBoundingClientRect(); return (e.clientX - r.left) / scale - offX; }
 // v3.1 free movement: the ship flies anywhere in the left 40% of the screen
 const X_MIN = 70, xMax = () => Math.max(SHIP_X + 60, W * 0.4);
 const isUI = e => e.target && e.target.closest && e.target.closest('button, a, input, select, .panel, .sheet, [role="dialog"]');
@@ -907,7 +913,7 @@ function director(dt) {
 // v3.1 leg modifiers that change over time: the magnetic field flips, the solar wind gusts
 function weather(dt) {
   const m = run.mods; if (!m || !m.length) return;
-  if (m.includes('magnet')) { run.magT += dt; if (run.magT > 11) { run.magT = 0; run.magDir = -run.magDir; floatText(run.magDir > 0 ? '⬇' : '⬆', ship.x + 30, ship.y - 40, '#9fb4ff', 20); } }
+  if (m.includes('magnet')) { run.magT += dt; if (run.magT > 11) { run.magT = 0; run.magDir = -run.magDir; floatText(run.magDir > 0 ? '▼' : '▲', ship.x + 30, ship.y - 40, '#9fb4ff', 20); } }
   if (m.includes('wind')) { run.windT += dt; run.wind = 22 * Math.sin(run.windT * TAU / 14); }
 }
 function drawWeather(c) {
@@ -1086,7 +1092,7 @@ function wingBlock(x, y, r) { for (const w of wings) if (!w.dead && (w.x - x) **
 // ---- weapon pickups: spread, laser, homing, saw (about 10 s each) ----
 const WEAPONS = ['spread', 'laser', 'homing', 'saw'];
 function giveWeapon(kind) {
-  ship.weapon = { kind, t: kind === 'laser' ? 8 : 10, max: kind === 'laser' ? 8 : 10, laserT: 0, saw: 0 };
+  ship.weapon = { kind, t: kind === 'laser' ? 11 : 14, max: kind === 'laser' ? 11 : 14, laserT: 0, saw: 0 };
   say2('wp_' + kind, ship.x + 30, ship.y + 40, '#ffe066'); say('bot_weapon');
 }
 function updateWeapon(dt) {
@@ -1279,7 +1285,7 @@ function rollPickup() {
 function addPick(kind, x, y, val) {
   if (picks.length >= 80) return null;
   const a = rnd(0, TAU), v = rnd(30, 110);
-  const p = { kind, x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, val, ph: rnd(0, 10), pulled: false, life: 14, dead: false };
+  const p = { kind, x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, val, ph: rnd(0, 10), pulled: false, life: 18, dead: false };
   picks.push(p); return p;
 }
 function collect(p) {
@@ -1306,7 +1312,7 @@ function collect(p) {
   if (p.kind === 'repair') { ship.hp = Math.min(ship.maxHp, ship.hp + 1); say2('f_repair', ship.x + 30, fy, '#9ff0a0'); }
   else if (p.kind === 'shield') { ship.shieldUp = true; ship.shieldT = 0; say2('f_shield', ship.x + 30, fy); }
   else if (p.kind === 'cell') { superF = Math.min(1, superF + 0.35); say2('f_cell', ship.x + 30, fy, '#ffe066'); checkSuperFull(); }
-  else if (p.kind === 'rapid') { ship.rapidT = 6; say2('f_rapid', ship.x + 30, fy, '#ffb347'); }
+  else if (p.kind === 'rapid') { ship.rapidT = 9; say2('f_rapid', ship.x + 30, fy, '#ffb347'); }
   else if (p.kind.startsWith('w_')) giveWeapon(p.kind.slice(2));
   mood('happy', 1.2); say('bot_pickup');
 }
@@ -2321,6 +2327,7 @@ function updatePicks(dt) {
       if (run.mods && run.mods.includes('magnet')) p.vy += run.magDir * 60 * dt;
     }
     p.x += p.vx * dt; p.y += p.vy * dt;
+    if (!p.pulled) { if (p.y < Y_MIN + 6) { p.y = Y_MIN + 6; p.vy = Math.abs(p.vy); } else if (p.y > Y_MAX - 6) { p.y = Y_MAX - 6; p.vy = -Math.abs(p.vy); } } // v3.2: always reachable
     if (ship.alive && (st === 'play' || st === 'arrive') && d < 26 * Math.max(0.5, ship.sc)) { p.dead = true; collect(p); continue; }
     if (p.x < -30 || p.life <= 0 || p.y < -40 || p.y > H + 40) p.dead = true;
   }
@@ -2403,8 +2410,26 @@ function updateParts(dt) {
 function render() {
   const c = ctx;
   c.setTransform(1, 0, 0, 1, 0, 0);
-  if (offY > 0.5) { c.fillStyle = '#070a1f'; c.fillRect(0, 0, cv.width, cv.height); }
-  c.setTransform(RES, 0, 0, RES, 0, offY * RES);
+  if (st === 'menu' || st === 'boot' || !run) { // the station backdrop fills the whole screen behind the menus
+    const sh = cv.height / H, wm = cv.width / sh;
+    if (wm >= 640) c.setTransform(sh, 0, 0, sh, 0, 0); else { const sw = cv.width / 640; c.setTransform(sw, 0, 0, sw, 0, (cv.height - H * sw) / 2); }
+    if (t - menuOT > 0.5 || t < menuOT) refreshMenuO();
+    safe(A.drawStationScene, c, Math.max(640, wm), H, t, menuO); return;
+  }
+  const band = offY > 0.5 || offX > 0.5;
+  if (band) { c.fillStyle = '#070a1f'; c.fillRect(0, 0, cv.width, cv.height); }
+  c.setTransform(RES, 0, 0, RES, offX * RES, offY * RES);
+  if (band) { c.save(); c.beginPath(); c.rect(0, 0, W, H); c.clip(); render2(c); c.restore(); drawBands(c); return; }
+  render2(c);
+}
+// the bands around the play field: a soft frame so the field reads as one window on every screen
+function drawBands(c) {
+  c.save(); c.lineWidth = 2; c.strokeStyle = 'rgba(120,150,255,.22)';
+  if (offY > 0.5) { c.beginPath(); c.moveTo(0, -1); c.lineTo(W, -1); c.moveTo(0, H + 1); c.lineTo(W, H + 1); c.stroke(); }
+  if (offX > 0.5) { c.beginPath(); c.moveTo(-1, 0); c.lineTo(-1, H); c.moveTo(W + 1, 0); c.lineTo(W + 1, H); c.stroke(); }
+  c.restore();
+}
+function render2(c) {
   c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
   if (st === 'menu' || st === 'boot' || !run) {
     if (t - menuOT > 0.5 || t < menuOT) refreshMenuO(); // the costume or character may change in the sheets

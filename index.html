@@ -52,7 +52,7 @@
   <div class="hud-r">
     <div class="stat score-box" id="scoreBox"><span id="hScore" dir="ltr">0</span><em class="combo" id="comboTag" dir="ltr" hidden>×2</em></div>
     <div class="stat coin-box" id="coinBox"><i class="coin" aria-hidden="true"></i><span id="hCoins" dir="ltr">0</span></div>
-    <button class="corner" id="pauseBtn" type="button" data-i18n-aria="a_pause" aria-label="إيقاف مؤقت">II</button>
+    <button class="corner" id="pauseBtn" type="button" data-i18n-aria="a_pause" aria-label="إيقاف مؤقت"><svg class="si" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg></button>
   </div>
 </div>
 <button class="super" id="superBtn" type="button" data-i18n-aria="a_super" aria-label="شعاع الأمل" hidden>
@@ -66,7 +66,7 @@
     <div class="panel-top">
       <div class="pills"><div class="coinpill"><i class="coin" aria-hidden="true"></i><span class="coinVal" dir="ltr">0</span></div></div>
       <div class="tools">
-        <button class="iconbtn" id="menuMute" type="button" data-i18n-aria="a_sound" aria-label="الصوت" aria-pressed="false">♪</button>
+        <button class="iconbtn" id="menuMute" type="button" data-i18n-aria="a_sound" aria-label="الصوت" aria-pressed="false"><svg class="si" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18.2 6.5a8 8 0 0 1 0 11"/></svg></button>
         <button class="iconbtn fpsbtn" id="fpsBtn" type="button" data-i18n-aria="a_fps" aria-label="سرعة الإطارات">60</button>
         <button class="iconbtn" id="fsBtn" type="button" data-i18n-aria="fullscreen" aria-label="ملء الشاشة" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
         <div class="lang" role="group" aria-label="Language / اللغة"></div>
@@ -161,13 +161,6 @@
           <div class="swap-parts" id="swParts"></div>
           <p class="sw-mult" id="swMult" hidden></p>
         </div>
-        <p class="unlock-line" id="overUnlock" hidden></p>
-        <div class="over-chips">
-          <div class="over-extra" id="overExtra" hidden></div>
-          <div class="mission-strip" id="overMissions"></div>
-          <div class="badge-strip" id="overBadges"></div>
-        </div>
-        <p class="nudge" id="overNudge" hidden></p>
         <div class="over-actions" id="overActions">
           <button class="btn" id="nextBtn" type="button"></button>
           <button class="btn alt" id="retryBtn" type="button" data-i18n="b_retry">حاول مرة ثانية</button>
@@ -199,6 +192,16 @@
   </div>
 </div>
 
+<!-- ============ v3.2 reward toasts: news first (tap to skip), choices last (they wait for you) ============ -->
+<div id="rq" class="rq" role="dialog" aria-modal="true" aria-labelledby="rqTitle" hidden>
+  <div class="rq-card" id="rqCard">
+    <div class="rq-pic" id="rqPic" aria-hidden="true"></div>
+    <div class="rq-tx"><small id="rqKick"></small><b id="rqTitle"></b><span id="rqSub"></span></div>
+    <div class="rq-act" id="rqAct"></div>
+    <i class="rq-time" id="rqTime" aria-hidden="true"></i>
+  </div>
+  <div class="rq-foot"><span class="rq-dots" id="rqDots" aria-hidden="true"></span><span class="rq-hint" id="rqHint"></span><button class="ghost rq-skip" id="rqSkip" type="button"></button></div>
+</div>
 <div id="note" role="status" aria-live="polite" hidden></div>
 <div id="banner" role="alert" hidden><b></b><span dir="auto"></span></div>
 

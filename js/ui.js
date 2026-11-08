@@ -40,6 +40,24 @@ const sr = i => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x -
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h)); return c; };
 const coinIc = () => el('i', 'coin');
+// v3.2: one set of line icons in the menu-tile style (ink strokes, no colour emoji), used wherever a symbol was
+const IC = {
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', x: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  sound: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18.2 6.5a8 8 0 0 1 0 11"/>',
+  mute: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
+  play: '<path class="fl" d="M8 5.5l11 6.5-11 6.5z"/>', pause: '<path d="M9 6v12M15 6v12"/>',
+  star: '<path class="fl" d="M12 3.2l2.6 5.6 6.1.7-4.5 4.2 1.2 6.1L12 16.8l-5.4 3 1.2-6.1-4.5-4.2 6.1-.7z"/>',
+  spark: '<path class="fl" d="M12 3l1.9 7.1L21 12l-7.1 1.9L12 21l-1.9-7.1L3 12l7.1-1.9z"/>',
+  gear: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2.6M12 17.9v2.6M3.5 12h2.6M17.9 12h2.6M6 6l1.8 1.8M16.2 16.2L18 18M6 18l1.8-1.8M16.2 7.8L18 6"/>',
+  shield: '<path d="M12 3.5l7 2.8v5c0 4.4-2.9 7.7-7 9.2-4.1-1.5-7-4.8-7-9.2v-5z"/>',
+  heart: '<path class="fl" d="M12 20s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.4a4.2 4.2 0 0 1 7.5 2.4C19.5 15.4 12 20 12 20z"/>',
+  bot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4.5M9.5 13v.6M14.5 13v.6M9.5 16.2h5"/>',
+  arrow: '<path d="M5 12h13M13 6.5l5.5 5.5-5.5 5.5"/>', up: '<path d="M6 15l6-6 6 6"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+};
+const svgI = (name, cls = '') => '<svg class="si' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (IC[name] || '') + '</svg>';
+const icon = (name, cls) => { const s = document.createElement('span'); s.className = 'sic'; s.innerHTML = svgI(name, cls); return s.firstChild; };
+const withIc = (name, text, cls) => { const e = el('span', 'ic-txt' + (cls ? ' ' + cls : '')); e.appendChild(icon(name)); e.append(text); return e; };
 const safeCall = (fn, ...a) => { try { return typeof fn === 'function' ? fn(...a) : undefined; } catch (e) { console.error(e); } };
 // meta.js functions that are new in v2: call through MM so a missing one never breaks the menus
 const MM = (fn, ...a) => typeof M[fn] === 'function' ? safeCall(M[fn], ...a) : undefined;
@@ -342,9 +360,9 @@ function syncCoins(v) {
   document.querySelectorAll('.coinVal').forEach(e => { e.textContent = s; });
 }
 let noteT = 0;
-export function note(text, ms = 1800) {
+export function note(text, ms = 1800, ic = null) {
   const n = $('note'); if (!n || !text) return;
-  n.textContent = text; n.hidden = false; clearTimeout(noteT); noteT = setTimeout(() => { n.hidden = true; }, ms);
+  n.textContent = ''; if (ic) n.appendChild(icon(ic)); n.append(text); n.hidden = false; clearTimeout(noteT); noteT = setTimeout(() => { n.hidden = true; }, ms);
 }
 function hideNote() { clearTimeout(noteT); const n = $('note'); if (n) n.hidden = true; }
 // v3: the WARNING banner before a boss (title + the boss's name), slides in across the screen
@@ -360,8 +378,8 @@ function bump(e) { if (!e || REDUCED) return; e.classList.remove('pop'); void e.
 function maybeToast() { const t = $('toast'); if (t && updateReady && !hudOn) t.hidden = false; }
 function syncMute() {
   const m = !!hook('isMuted');
-  for (const id of ['muteBtn', 'menuMute']) { const b = $(id); if (b) { b.textContent = m ? '✕' : '♪'; b.setAttribute('aria-pressed', m ? 'true' : 'false'); } }
-  const pm = $('pauseMute'); if (pm) { pm.textContent = (m ? '✕ ' : '♪ ') + T('sound'); pm.setAttribute('aria-pressed', m ? 'true' : 'false'); }
+  for (const id of ['muteBtn', 'menuMute']) { const b = $(id); if (b) { b.innerHTML = svgI(m ? 'mute' : 'sound'); b.setAttribute('aria-pressed', m ? 'true' : 'false'); } }
+  const pm = $('pauseMute'); if (pm) { pm.innerHTML = ''; pm.appendChild(withIc(m ? 'mute' : 'sound', T('sound'))); pm.setAttribute('aria-pressed', m ? 'true' : 'false'); }
 }
 function syncFps() {
   const f = hook('getFps') === 30 ? 30 : 60;
@@ -484,7 +502,7 @@ export function renderMenu() {
     if (THUMBS.has((j.planet || j.id) + (open ? ':o' : ':l'))) fill(); else setTimeout(fill, 30 + i * 40);
     if (gated) { const g = el('span', 'gate'); g.innerHTML = WRENCH_SVG; g.appendChild(el('span', null, T('m_needShort', need.need))); b.appendChild(g); }
     else if (!open) { const lk = el('span', 'lock'); lk.innerHTML = LOCK_SVG; b.appendChild(lk); }
-    if (done >= 3) b.appendChild(el('span', 'ok', '✓'));
+    if (done >= 3) { const ok = el('span', 'ok'); ok.appendChild(icon('check')); b.appendChild(ok); }
     b.appendChild(el('b', null, jName(j.id)));
     const lp = el('small', 'lp'); lp.setAttribute('aria-hidden', 'true'); for (let k = 0; k < 3; k++) lp.appendChild(el('i', k < done ? 'on' : ''));
     if (nStars) { const st = el('em', 'jst'); st.appendChild(el('i', 'star on')); st.append(nf(nStars)); lp.appendChild(st); }
@@ -513,7 +531,7 @@ export function renderMenu() {
     const nm = legName(selJ, li), rw = M.legReward(selJ, li);
     b.title = T('m_legOf', li, 3) + ' · ' + nm + (ok ? ' · ' + (d ? T('m_replay') : T('m_reward', rw)) + ' · ' + T('a_stars', starCount(st)) : ' · ' + T('m_locked'));
     b.setAttribute('aria-label', b.title);
-    const num = el('i', null, d ? '✓' : nf(li + 1)); b.appendChild(num);
+    const num = el('i', null, d ? null : nf(li + 1)); if (d) num.appendChild(icon('check')); b.appendChild(num);
     const tx = el('span', 'ltx'); tx.appendChild(el('span', 'lname', nm));
     if (ok) { const lr = el('span', 'lrow'); lr.appendChild(starRow(st, 'lst')); const md = MM('legMedals', selJ, li); if (md) lr.appendChild(medalRow(md, [], false, true)); tx.appendChild(lr); }
     b.appendChild(tx);
@@ -524,7 +542,7 @@ export function renderMenu() {
   const hb = $('hardBtn'), hOpen = !!MM('hardOpen', selJ), hOn = hOpen && !!MM('hardOn', selJ);
   if (hb) {
     hb.hidden = !hOpen;
-    if (hOpen) { hb.textContent = (hOn ? '★ ' : '') + T('b_hard'); hb.classList.toggle('on', hOn); hb.setAttribute('aria-pressed', hOn ? 'true' : 'false'); hb.title = T('hd_note'); hb.onclick = () => { MM('setHard', selJ, !hOn); hook('sfx', 'chime'); note(hOn ? T('b_hardOff') : T('hd_note')); renderMenu(); }; }
+    if (hOpen) { hb.innerHTML = ''; if (hOn) hb.appendChild(icon('star')); hb.append(T('b_hard')); hb.classList.toggle('on', hOn); hb.setAttribute('aria-pressed', hOn ? 'true' : 'false'); hb.title = T('hd_note'); hb.onclick = () => { MM('setHard', selJ, !hOn); hook('sfx', 'chime'); note(hOn ? T('b_hardOff') : T('hd_note')); renderMenu(); }; }
   }
   $('launchBtn').classList.toggle('hard', hOn);
   $('launchBtn').setAttribute('aria-label', T('b_launch') + ' · ' + jName(selJ) + ' · ' + T('m_legOf', selL, 3) + (hOn ? ' · ' + T('b_hard') : ''));
@@ -563,7 +581,7 @@ function boostRow(box, showNone) {
     b.appendChild(el('small', null, nf(stock[id])));
     b.onclick = () => {
       const ok = MM('setArmed', id, !on);
-      if (ok === false) note(T('bo_none')); else { note((on ? '' : '✓ ') + T('bo_' + id) + (on ? ' ✕' : '')); hook('sfx', 'tick'); }
+      if (ok === false) note(T('bo_none')); else { note(T('bo_' + id), 1800, on ? 'x' : 'check'); hook('sfx', 'tick'); }
       document.querySelectorAll('.boosts').forEach(r => boostRow(r, r.dataset.none === '1'));
     };
     box.appendChild(b);
@@ -592,7 +610,7 @@ export function showMenu() {
 }
 export function hideMenus() {
   for (const id of ['menu', 'sheet', 'langPick', 'loginPop', 'over', 'pause']) { const e = $(id); if (e) e.hidden = true; }
-  sheetKind = null; stopTips(); stopCount(); dropAnims('menu'); dropAnims('sheet'); dropAnims('over'); avMenuAnim = null;
+  sheetKind = null; stopTips(); stopCount(); rqClose(); dropAnims('menu'); dropAnims('sheet'); dropAnims('over'); avMenuAnim = null;
   const t = $('toast'); if (t) t.hidden = true;
 }
 
@@ -640,7 +658,7 @@ export function openSheet(kind) {
   if (!wasOpen) { sheetFrom = document.querySelector('[data-sheet="' + kind + '"]'); hideNote(); }
   dropAnims('sheet'); sheetKind = kind; body.innerHTML = ''; $('sheet').hidden = false; syncCoins();
   $('sheetTitle').textContent = T(S2[0]);
-  if (!wasOpen) hangTab = 'up';
+  if (!wasOpen) { hangTab = 'up'; dr = null; }
   S2[1](body);
   body.scrollTop = keep;
   if (!wasOpen && kbd) try { $('sheetClose').focus({ preventScroll: true }); } catch (e) {}
@@ -676,99 +694,108 @@ const TRICKS = { blaster: [[5, 'pierce']], hull: [[5, 'regen']], shield: [[4, 's
 const noTrick = s => String(s == null ? '' : s).split(' · ').filter(p => !p.trim().startsWith(TRICK)).join(' · ');
 const trickName = k => TT('tr_' + k, k, k);
 const trickLine = name => keyIsFn('up_trick') ? T('up_trick', name) : TRICK + ' ' + name;
+// v3.2 hangar: the same stage + choices layout as the suits picker. Tap an upgrade (or booster) tile, read it on the
+// stage, buy with the one button. Fits on a phone in landscape without scrolling.
+let hangSel = null, boostSel = null;
 function sheetHangar(body) {
-  const head = el('div', 'hangar-head');
-  const ub = el('div', 'usta-box'), uc = mk(184, 184); uc.setAttribute('aria-hidden', 'true'); ub.appendChild(uc); head.appendChild(ub);
-  addAnim(uc, t => {
-    const c = uc.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 184, 184); stars(c, 184, 120, t, 14, 0.6);
-    c.save(); c.scale(184 / 100, 184 / 100);
-    if (!art('drawUsta', c, 50, 97, 0.9, t)) { c.fillStyle = '#e9b330'; c.strokeStyle = INK; c.lineWidth = 3; rr(c, 28, 24, 44, 66, 8); c.fill(); c.stroke(); c.fillStyle = '#2fd4e6'; c.beginPath(); c.arc(50, 44, 10, 0, TAU); c.fill(); c.stroke(); }
-    c.restore();
-  }, 'sheet');
   const rec = MM('recommend');
   if (!ustaLine) { const tip = MM('ustaTip'); ustaLine = tip && Math.random() < 0.6 ? T('usta_tip', T('cs_' + tip)).replace(/^[^:]+:\s*/, '') : TL('usta_lines'); }
-  const say = el('p', 'say'); say.appendChild(el('b', null, T('n_usta') + ': ')); say.append(ustaLine);
-  if (rec && hangTab === 'up') { say.appendChild(el('br')); const r2 = el('span', 'say-rec'); r2.append(T('up_rec') + ': '); r2.appendChild(el('b', null, T('up_' + rec))); say.appendChild(r2); }
-  head.appendChild(say);
-  const sv = el('div', 'ship-view'), sc = mk(352, 192); sc.setAttribute('aria-hidden', 'true'); sv.appendChild(sc);
-  const lvN = MM('shipLevel') ?? MM('totalLevels') ?? 0;
-  sv.appendChild(el('small', null, TT('a_shipLv', 'مستوى السفينة ' + nf(lvN), 'Ship level ' + nf(lvN), lvN))); head.appendChild(sv);
-  const L = shipLook();
+  const wrap = el('div', 'dr hg');
+  // ---- stage ----
+  const stage = el('div', 'dr-stage');
+  const sc = mk(400, 200); sc.className = 'dr-cv hg-cv'; sc.setAttribute('aria-hidden', 'true'); stage.appendChild(sc);
+  const L = shipLook(), boostTab = hangTab === 'boost', gi = mk(88, 88);
+  const bos = M.BOOSTERS || [], stock = MM('boosters') || {};
+  if (!hangSel || !M.UPGRADES.some(u => u.id === hangSel)) hangSel = rec || M.UPGRADES[0].id;
+  if (!boostSel || !bos.some(b => b.id === boostSel)) boostSel = bos[0] && bos[0].id;
   addAnim(sc, t => {
-    const c = sc.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 352, 192);
-    for (let i = 0; i < 26; i++) { const s = STARS[i], x = ((s.x * 352 - t * (40 + s.r * 60)) % 352 + 352) % 352; c.globalAlpha = 0.35 + s.r * 0.3; c.fillStyle = '#fff'; c.fillRect(x, s.y * 192, 2 + s.r * 5, 1.5); }
+    const c = sc.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 400, 200);
+    const g = c.createLinearGradient(0, 0, 0, 200); g.addColorStop(0, '#231a52'); g.addColorStop(1, '#0f0b24'); c.fillStyle = g; c.fillRect(0, 0, 400, 200);
+    for (let i = 0; i < 26; i++) { const s2 = STARS[i], x = ((s2.x * 400 - t * (40 + s2.r * 60)) % 400 + 400) % 400; c.globalAlpha = 0.35 + s2.r * 0.3; c.fillStyle = '#fff'; c.fillRect(x, s2.y * 200, 2 + s2.r * 5, 1.5); }
     c.globalAlpha = 1;
-    const k = 2.0, bob = REDUCED ? 0 : Math.sin(t * 1.6) * 3;
-    c.save(); c.scale(k, k);
-    if (!art('drawShip', c, 352 / k / 2 + 6, 192 / k / 2 + bob, Object.assign({}, L, { t, tilt: REDUCED ? 0 : Math.sin(t * 1.6) * 0.25, thrust: 0.8, hurt: 0, shield: L.shieldCd > 0 ? 0.35 : 0, beam: false }))) {
-      c.fillStyle = '#f4f1ea'; c.strokeStyle = INK; c.lineWidth = 2; c.beginPath(); c.ellipse(88, 48 + bob, 34, 14, 0, 0, TAU); c.fill(); c.stroke();
-    }
+    const bob = REDUCED ? 0 : Math.sin(t * 1.6) * 3;
+    c.save(); c.translate(140, 104 + bob); c.scale(1.8, 1.8);
+    art('drawShip', c, 0, 0, Object.assign({}, L, { t, tilt: REDUCED ? 0 : Math.sin(t * 1.6) * 0.2, thrust: 0.8, hurt: 0, shield: L.shieldCd > 0 ? 0.3 : 0, beam: false }));
     c.restore();
+    // the selected upgrade / booster glyph, big, at the side
+    const gx = gi.getContext('2d');
+    if (boostTab) { if (boostSel) boostIcon(gx, boostSel, 88, 0.4 + t * 0.2); } else upIcon(gx, hangSel, 88, t);
+    c.save(); c.fillStyle = '#1d1640'; c.strokeStyle = '#1c1530'; c.lineWidth = 4; rr(c, 286, 46, 96, 96, 18); c.fill(); c.stroke();
+    c.beginPath(); rr(c, 288, 48, 92, 92, 16); c.clip(); c.drawImage(gi, 290, 50, 88, 88); c.restore();
+    c.save(); c.strokeStyle = 'rgba(47,212,230,.45)'; c.lineWidth = 2; rr(c, 286, 46, 96, 96, 18); c.stroke(); c.restore();
   }, 'sheet');
-  body.appendChild(head);
-  // tabs
-  const tabs = el('div', 'tabs'); tabs.setAttribute('role', 'tablist');
+  const lvN = MM('shipLevel') ?? MM('totalLevels') ?? 0;
+  const info = el('div', 'dr-info'), cta = el('div', 'dr-cta');
+  if (!boostTab) {
+    const u = M.UPGRADES.find(x => x.id === hangSel), lv = M.level(u.id), max = u.max, price = M.nextPrice(u.id), can = M.canBuy(u.id), isMax = price == null;
+    const nm = el('b'); nm.append(T('up_' + u.id)); const pips = el('span', 'pips'); pips.setAttribute('role', 'img'); pips.setAttribute('aria-label', T('up_lv', lv, max));
+    for (let k = 0; k < max; k++) pips.appendChild(el('i', k < lv ? 'on' : '')); nm.appendChild(pips); info.appendChild(nm);
+    const eff = el('small', 'hg-eff');
+    if (isMax) eff.append(noTrick(upText(u.id, lv))); else { eff.appendChild(el('em', null, noTrick(upText(u.id, lv)))); eff.appendChild(icon('arrow', 'dir')); eff.appendChild(el('b', null, noTrick(upText(u.id, lv + 1)))); }
+    info.appendChild(eff);
+    const tr = TRICKS[u.id] || [], next = tr.find(o => o[0] > lv), got = tr.filter(o => o[0] <= lv).map(o => trickName(o[1]));
+    if (next) info.appendChild(withIc('spark', trickLine(trickName(next[1])).replace(TRICK, '').trim() + ' · ' + T('up_lv', next[0], max), 'trick'));
+    else if (got.length) info.appendChild(withIc('spark', got.join(' · '), 'trick got'));
+    const b = cardBtn(isMax ? { text: T('up_max'), cls: 'sec', disabled: true } : { text: T('up_buy', price), price, disabled: !can, onClick: () => {
+      const r = M.buyUpgrade(u.id) || {};
+      if (r.ok) { bought(); ustaLine = TL('usta_buy'); hook('onBuy', u.id); } else if (r.reason === 'max') ustaLine = TL('usta_max'); else { note(T('notEnough')); ustaLine = TL('usta_poor'); }
+      openSheet('hangar');
+    } });
+    b.classList.add('dr-go'); if (!isMax) b.setAttribute('aria-label', T('up_buy', price) + ' · ' + T('up_' + u.id)); cta.appendChild(b);
+  } else if (boostSel) {
+    const bo = bos.find(x => x.id === boostSel), have = stock[bo.id] || 0;
+    const nm = el('b', null, T('bo_' + bo.id)); nm.appendChild(el('em', 'hg-have', T('bo_have', have))); info.appendChild(nm);
+    info.appendChild(el('small', null, T('bo_' + bo.id + '_d')));
+    const b = cardBtn({ text: T('buy', bo.price), price: bo.price, disabled: M.coins() < bo.price, onClick: () => {
+      const r = MM('buyBooster', bo.id) || {};
+      if (r.ok) { bought(); ustaLine = TL('usta_buy'); } else { note(T('notEnough')); ustaLine = TL('usta_poor'); }
+      openSheet('hangar');
+    } });
+    b.classList.add('dr-go'); cta.appendChild(b);
+  }
+  stage.appendChild(info); stage.appendChild(cta);
+  wrap.appendChild(stage);
+  // ---- side: tabs, Usta, tiles ----
+  const side = el('div', 'dr-side');
+  const tabs = el('div', 'dr-steps two'); tabs.setAttribute('role', 'tablist');
   for (const [id, key] of [['up', 'hg_tabUp'], ['boost', 'hg_tabBoost']]) {
-    const b = el('button', 'tab' + (hangTab === id ? ' on' : ''), T(key)); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', hangTab === id ? 'true' : 'false');
-    if (id === 'boost') { const n = Object.values(MM('boosters') || {}).reduce((a, v) => a + (+v || 0), 0); if (n) b.appendChild(el('em', 'tab-n', nf(n))); }
+    const b = el('button', 'dr-step' + (hangTab === id ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', hangTab === id ? 'true' : 'false');
+    b.appendChild(el('span', null, T(key)));
+    if (id === 'boost') { const n = Object.values(stock).reduce((a, v) => a + (+v || 0), 0); if (n) b.appendChild(el('i', null, nf(n))); }
     b.onclick = () => { if (hangTab === id) return; hangTab = id; openSheet('hangar'); };
     tabs.appendChild(b);
   }
-  body.appendChild(tabs);
-  if (hangTab === 'boost') { hangarBoosters(body); return; }
-  const ups = el('div', 'ups');
-  for (const u of M.UPGRADES) {
-    const lv = M.level(u.id), max = u.max, price = M.nextPrice(u.id), can = M.canBuy(u.id), isMax = price == null, isRec = u.id === rec;
-    const row = el('div', 'up' + (isMax ? ' max' : '') + (isRec ? ' rec' : ''));
-    const ic = mk(88, 88); ic.setAttribute('aria-hidden', 'true'); row.appendChild(ic);
-    if (u.id === 'nabeeh' || u.id === 'engine') addAnim(ic, t => upIcon(ic.getContext('2d'), u.id, 88, t), 'sheet'); else upIcon(ic.getContext('2d'), u.id, 88, 0);
-    const nm = el('b', 'up-name'); nm.appendChild(el('span', null, T('up_' + u.id)));
-    const pips = el('span', 'pips'); pips.setAttribute('role', 'img'); pips.setAttribute('aria-label', T('up_lv', lv, max));
-    for (let k = 0; k < max; k++) pips.appendChild(el('i', k < lv ? 'on' : '')); nm.appendChild(pips);
-    if (isRec) nm.appendChild(el('em', 'rec-tag', T('up_rec')));
-    row.appendChild(nm);
-    row.appendChild(el('small', 'up-d', T('up_' + u.id + '_d')));
-    const eff = el('span', 'eff');
-    if (isMax) { eff.append(noTrick(upText(u.id, lv))); }
-    else { const now = el('em', null, noTrick(upText(u.id, lv))); eff.appendChild(now); eff.appendChild(el('b', null, T('arrow'))); eff.append(noTrick(upText(u.id, lv + 1))); }
-    row.appendChild(eff);
-    // the ✦ trick: the next one to unlock, or the last one owned
-    const tr = TRICKS[u.id] || [], next = tr.find(o => o[0] > lv), got = tr.filter(o => o[0] <= lv).map(o => trickName(o[1]));
-    if (next) row.appendChild(el('small', 'trick', trickLine(trickName(next[1])) + ' · ' + T('up_lv', next[0], max)));
-    else if (got.length) row.appendChild(el('small', 'trick got', TRICK + ' ' + got.join(' · ') + ' ✓'));
-    const b = el('button'); b.type = 'button';
-    if (isMax) { b.textContent = T('up_max'); b.disabled = true; }
-    else { b.appendChild(coinIc()); b.append(nf(price)); b.disabled = !can; b.setAttribute('aria-label', T('up_buy', price) + ' · ' + T('up_' + u.id)); }
-    b.onclick = () => {
-      const r = M.buyUpgrade(u.id) || {};
-      if (r.ok) { bought(); ustaLine = TL('usta_buy'); hook('onBuy', u.id); }
-      else if (r.reason === 'max') { ustaLine = TL('usta_max'); }
-      else { note(T('notEnough')); ustaLine = TL('usta_poor'); }
-      openSheet('hangar');
-    };
-    row.appendChild(b);
-    ups.appendChild(row);
+  side.appendChild(tabs);
+  const say = el('div', 'hg-say'), uc = mk(80, 80); uc.setAttribute('aria-hidden', 'true'); say.appendChild(uc);
+  { const c = uc.getContext('2d'); c.save(); c.scale(0.8, 0.8); if (!art('drawUsta', c, 50, 97, 0.9, 0.5)) { c.fillStyle = '#e9b330'; rr(c, 28, 24, 44, 66, 8); c.fill(); } c.restore(); }
+  const st = el('p'); st.appendChild(el('b', null, T('n_usta') + ': ')); st.append(ustaLine);
+  if (rec && !boostTab) { st.append(' · '); st.appendChild(el('span', 'say-rec', T('up_rec') + ': ' + T('up_' + rec))); }
+  say.appendChild(st); side.appendChild(say);
+  const grid = el('div', 'hg-grid' + (boostTab ? ' bo' : '')); grid.setAttribute('role', 'listbox');
+  if (!boostTab) for (const u of M.UPGRADES) {
+    const lv = M.level(u.id), price = M.nextPrice(u.id), isMax = price == null, can = M.canBuy(u.id), on = u.id === hangSel;
+    const b = el('button', 'hg-tile' + (on ? ' sel' : '') + (isMax ? ' max' : '') + (u.id === rec ? ' rec' : '') + (can ? ' can' : '')); b.type = 'button';
+    b.setAttribute('role', 'option'); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.setAttribute('aria-label', T('up_' + u.id) + ' · ' + T('up_lv', lv, u.max));
+    const ic = mk(72, 72); ic.setAttribute('aria-hidden', 'true'); upIcon(ic.getContext('2d'), u.id, 72, 0); b.appendChild(ic);
+    const lb = el('span', 'hg-lv'); for (let k = 0; k < u.max; k++) lb.appendChild(el('i', k < lv ? 'on' : '')); b.appendChild(lb);
+    if (u.id === rec) { const m = el('em', 'hg-rec'); m.appendChild(icon('star')); b.appendChild(m); }
+    else if (can) b.appendChild(el('em', 'hg-can'));
+    b.onclick = () => { hangSel = u.id; hook('sfx', 'tick'); openSheet('hangar'); };
+    grid.appendChild(b);
   }
-  body.appendChild(ups);
-  body.appendChild(el('p', 'note-line', T('shopNote')));
-}
-function hangarBoosters(body) {
-  body.appendChild(el('p', 'note-line', T('bo_arm')));
-  const stock = MM('boosters') || {}, g = el('div', 'cards boost-cards');
-  for (const bo of M.BOOSTERS || []) {
-    const have = stock[bo.id] || 0;
-    const cc = card(cnv => boostIcon(cnv.getContext('2d'), bo.id, 192, 0.4), T('bo_' + bo.id), T('bo_' + bo.id + '_d'),
-      { text: T('buy', bo.price), price: bo.price, disabled: M.coins() < bo.price, onClick: () => {
-        const r = MM('buyBooster', bo.id) || {};
-        if (r.ok) { bought(); ustaLine = TL('usta_buy'); } else { note(T('notEnough')); ustaLine = TL('usta_poor'); }
-        openSheet('hangar');
-      } }, have ? 'has' : '');
-    const hv = el('span', 'tier', T('bo_have', have)); cc.appendChild(hv);
-    g.appendChild(cc);
+  else for (const bo of bos) {
+    const have = stock[bo.id] || 0, on = bo.id === boostSel;
+    const b = el('button', 'hg-tile' + (on ? ' sel' : '')); b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.setAttribute('aria-label', T('bo_' + bo.id) + ' · ' + T('bo_have', have));
+    const ic = mk(72, 72); ic.setAttribute('aria-hidden', 'true'); boostIcon(ic.getContext('2d'), bo.id, 72); b.appendChild(ic);
+    b.appendChild(el('span', 'hg-n', '×' + nf(have)));
+    b.onclick = () => { boostSel = bo.id; hook('sfx', 'tick'); openSheet('hangar'); };
+    grid.appendChild(b);
   }
-  body.appendChild(g);
+  side.appendChild(grid);
+  side.appendChild(el('p', 'hint hg-foot', boostTab ? T('bo_arm') : TT('a_shipLv', 'مستوى السفينة ' + nf(lvN), 'Ship level ' + nf(lvN), lvN)));
+  wrap.appendChild(side);
+  body.appendChild(wrap);
 }
-
 // ---- costumes: character picker, colours, perk costumes, ship paint ----
 function srcText(src, st) {
   if (!src) return '';
@@ -779,97 +806,133 @@ function srcText(src, st) {
   if (src.type === 'badge') return T('cs_src_badge', T('bg_' + src.id));
   return '';
 }
-function sheetCostumes(body) {
-  const ch = CHAR();
-  // 1) who flies: Abood, or Mozah once 10 missions are done
-  body.appendChild(el('p', 'sec-title', T('ch_title')));
-  const cg = el('div', 'chars');
-  for (const id of (M.CHARS || ['abood', 'mozah'])) {
-    const on = id === ch, locked = id === 'mozah' && MM('girlOpen') === false;
-    const c = el('div', 'char' + (on ? ' on' : '') + (locked ? ' locked' : ''));
-    const cnv = mk(168, 168); cnv.setAttribute('aria-hidden', 'true'); c.appendChild(cnv);
-    const pose = on ? 'wave' : 'stand', cos = costumeOf(id);
-    const draw = t => { const x = cnv.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, 168, 168); x.save(); x.scale(168 / 200, 168 / 200); if (!astro(x, 100, 194, 2.5, { t, char: id, costume: cos, pose })) astroFallback(x, 100, 190); x.restore(); };
-    if (on) addAnim(cnv, draw, 'sheet'); else draw(0.4);
-    const tx = el('div', 'char-tx');
-    tx.appendChild(el('b', null, T('ch_' + id)));
-    if (locked) {
-      const need = M.GIRL_MISSIONS || 10, have = Math.min(MM('missionsDone') || 0, need);
-      tx.appendChild(el('small', null, T('ch_lock', have, need)));
-      tx.appendChild(progBar(have / need));
-    } else if (on) tx.appendChild(el('small', 'playing', '✓ ' + T('ch_playing')));
-    if (!on) tx.appendChild(cardBtn({ text: locked ? T('bg_locked') : T('ch_pick'), cls: locked ? '' : 'sec', disabled: locked, onClick: () => pickChar(id) }));
-    c.appendChild(tx);
-    cg.appendChild(c);
-  }
-  body.appendChild(cg);
-  body.appendChild(el('p', 'note-line', T('cs_note')));
+// v3.2 guided picker: three steps (pilot, suit, ship). A tap on a choice previews it on the big stage; one button
+// under the stage wears, buys or explains the lock. Nothing stacks, so the sheet never scrolls.
+let dr = null;
+function drItems(step, group, ch) {
   const all = COSTUMES(), fits = id => { const f = MM('costumeFits', id, ch); return f == null ? true : !!f; };
-  const wear = id => { if (MM('wearCostume', id) ?? MM('wearSuit', id)) { hook('sfx', 'chime'); hook('onChar', ch); openSheet('costumes'); } };
-  // 2) free colours, this character only
-  const cols = all.filter(c => (c.kind ? c.kind === 'color' : !c.perk && !c.price) && fits(c.id));
-  if (cols.length) {
-    body.appendChild(el('p', 'sec-title', T('cs_colors')));
-    const g = el('div', 'cards');
+  if (step === 'pilot') return (M.CHARS || ['abood', 'mozah']).map(id => {
+    const locked = id === 'mozah' && MM('girlOpen') === false, need = M.GIRL_MISSIONS || 10, have = Math.min(MM('missionsDone') || 0, need);
+    return { id, name: T('ch_' + id), on: id === ch, locked, why: locked ? T('ch_lock', have, need) : '', prog: locked ? have / need : null,
+      act: id === ch ? null : locked ? null : { text: T('ch_pick'), go: () => pickChar(id) } };
+  });
+  if (step === 'suit' && group === 'color') {
     const worn = costumeOf(ch);
-    for (const C of cols) {
-      const on = C.id === worn;
-      g.appendChild(card(cnv => costumePic(cnv.getContext('2d'), C.id, ch, 192), T('cs_' + C.id), T('free'),
-        { text: on ? T('wearing') : T('wear'), cls: 'sec', disabled: on, onClick: () => wear(C.id) }, on ? 'on' : ''));
-    }
-    body.appendChild(g);
+    return all.filter(c => (c.kind ? c.kind === 'color' : !c.perk && !c.price) && fits(c.id)).map(C => ({ id: C.id, name: T('cs_' + C.id), sub: T('free'), on: C.id === worn,
+      act: C.id === worn ? null : { text: T('wear'), go: () => drWear(C.id, ch) } }));
   }
-  // 3) perk costumes (fit both characters)
-  const perks = all.filter(c => (c.kind ? c.kind === 'perk' : !!c.perk));
-  if (perks.length) {
-    body.appendChild(el('p', 'sec-title', T('cs_perks')));
-    const g = el('div', 'cards');
-    for (const C of perks) {
-      const st = MM('costumeState', C.id) || { owned: M.ownsSuit && M.ownsSuit(C.id), wearing: costumeOf(ch) === C.id, price: C.price, src: C.src || { type: 'coins' } };
-      const src = st.src || C.src || { type: 'coins' }, owned = !!st.owned, on = !!st.wearing;
-      const locked = !owned && (st.locked != null ? !!st.locked : src.type !== 'coins');
-      let btn;
-      if (on) btn = { text: T('wearing'), cls: 'sec', disabled: true };
-      else if (owned) btn = { text: T('wear'), cls: 'sec', onClick: () => wear(C.id) };
-      else if (locked) btn = { text: T('bg_locked'), disabled: true };
-      else {
-        const price = st.price != null ? st.price : C.price;
-        btn = { text: T('buy', price), price, disabled: M.coins() < price, onClick: () => {
-          const r = (MM('buyCostume', C.id) ?? MM('buySuit', C.id)) || {};
-          if (r.ok) { bought(); hook('onChar', ch); } else note(T(r.reason === 'locked' ? 'bg_locked' : 'notEnough'));
-          openSheet('costumes');
-        } };
-      }
-      const cc = card(cnv => costumePic(cnv.getContext('2d'), C.id, ch, 192), T('cs_' + C.id), null, null, ['perk', on ? 'on' : '', locked ? 'locked' : ''].filter(Boolean).join(' '));
-      cc.appendChild(el('small', 'fx', T('cp_' + C.id)));
-      if (st.warn ?? (C.id === 'link' && M.level('nabeeh') < 1)) cc.appendChild(el('small', 'warn', T('cs_linkNote')));
-      if (!owned && src.type !== 'coins') {
-        cc.appendChild(el('small', 'src', srcText(src, st)));
-        if (st.progress && st.progress[1]) cc.appendChild(progBar(st.progress[0] / st.progress[1]));
-      }
-      cc.appendChild(cardBtn(btn));
-      g.appendChild(cc);
-    }
-    body.appendChild(g);
+  if (step === 'suit') return all.filter(c => (c.kind ? c.kind === 'perk' : !!c.perk)).map(C => {
+    const st = MM('costumeState', C.id) || { owned: M.ownsSuit && M.ownsSuit(C.id), wearing: costumeOf(ch) === C.id, price: C.price, src: C.src || { type: 'coins' } };
+    const src = st.src || C.src || { type: 'coins' }, owned = !!st.owned, on = !!st.wearing, locked = !owned && (st.locked != null ? !!st.locked : src.type !== 'coins');
+    const price = st.price != null ? st.price : C.price;
+    let act = null;
+    if (!on && owned) act = { text: T('wear'), go: () => drWear(C.id, ch) };
+    else if (!on && !locked) act = { text: T('buy', price), price, disabled: M.coins() < price, go: () => {
+      const r = (MM('buyCostume', C.id) ?? MM('buySuit', C.id)) || {};
+      if (r.ok) { bought(); hook('onChar', ch); } else note(T(r.reason === 'locked' ? 'bg_locked' : 'notEnough'));
+      openSheet('costumes');
+    } };
+    const warn = (st.warn ?? (C.id === 'link' && M.level('nabeeh') < 1)) ? T('cs_linkNote') : '';
+    return { id: C.id, name: T('cs_' + C.id), sub: T('cp_' + C.id) + (warn ? ' · ' + warn : ''), on, locked, perk: true,
+      why: locked ? srcText(src, st) : '', prog: locked && st.progress && st.progress[1] ? st.progress[0] / st.progress[1] : null, act };
+  });
+  // ship paint (shared by both pilots)
+  const curSkin = idOf(MM('skin')) || 'falak';
+  return (M.SKINS || []).map(S => {
+    const ss = MM('skinState', S.id), owned = ss ? !!ss.owned : (!!MM('ownsSkin', S.id) || S.id === 'falak'), on = ss ? !!ss.wearing : S.id === curSkin;
+    return { id: S.id, name: T('sk_' + S.id), on, locked: !owned, why: owned ? '' : srcText(S.src || { type: 'free' }), ship: true,
+      act: on || !owned ? null : { text: T('paint'), go: () => { if (MM('wearSkin', S.id)) { hook('sfx', 'chime'); hook('onChar', ch); } openSheet('costumes'); } } };
+  });
+}
+function drWear(id, ch) { if (MM('wearCostume', id) ?? MM('wearSuit', id)) { hook('sfx', 'chime'); hook('onChar', ch); } openSheet('costumes'); }
+function sheetCostumes(body) {
+  const ch0 = CHAR();
+  if (!dr) dr = { step: 'pilot', group: 'color', sel: { pilot: ch0 } };
+  const ch = CHAR(), step = dr.step;
+  const items = drItems(step, dr.group, ch);
+  let it = items.find(x => x.id === dr.sel[step + (step === 'suit' ? dr.group : '')]) || items.find(x => x.on) || items[0];
+  if (step === 'suit' && dr.group === 'color' && !items.length) { dr.group = 'perk'; openSheet('costumes'); return; }
+  const key = step + (step === 'suit' ? dr.group : ''); if (it) dr.sel[key] = it.id;
+  const wrap = el('div', 'dr');
+  // ---- stage: live preview + the one action ----
+  const stage = el('div', 'dr-stage'), cv = mk(400, 250); cv.className = 'dr-cv'; cv.setAttribute('aria-hidden', 'true'); stage.appendChild(cv);
+  const pilot = step === 'pilot' && it ? it.id : ch;
+  const suit = step === 'suit' && it ? it.id : costumeOf(pilot);
+  const skin = step === 'ship' && it ? it.id : (idOf(MM('skin')) || 'falak');
+  const L = shipLook(), shipFocus = step === 'ship';
+  addAnim(cv, t => {
+    const c = cv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 400, 250);
+    const g = c.createLinearGradient(0, 0, 0, 250); g.addColorStop(0, '#231a52'); g.addColorStop(1, '#0f0b24'); c.fillStyle = g; c.fillRect(0, 0, 400, 250);
+    stars(c, 400, 250, t, 30, 0.8);
+    c.fillStyle = 'rgba(47,212,230,.10)'; c.beginPath(); c.ellipse(shipFocus ? 200 : 140, 236, shipFocus ? 150 : 90, 12, 0, 0, TAU); c.fill();
+    const bob = REDUCED ? 0 : Math.sin(t * 1.6) * 4, look = Object.assign({}, L, { t, tilt: REDUCED ? 0 : Math.sin(t * 1.6) * 0.18, thrust: 0.8, hurt: 0, shield: 0, beam: false, skin, char: pilot, costume: suit, suit });
+    if (it && it.locked) c.filter = 'grayscale(.85) brightness(.7)';
+    c.save(); c.translate(shipFocus ? 215 : 300, shipFocus ? 112 + bob : 92 + bob); const k = shipFocus ? 2.15 : 1.25; c.scale(k, k); art('drawShip', c, 0, 0, look); c.restore();
+    c.save(); if (shipFocus) { c.globalAlpha = 0.9; if (!astro(c, 56, 238, 1.05, { t, char: pilot, costume: suit, pose: 'wave' })) astroFallback(c, 52, 240); }
+    else if (!astro(c, 140, 240, 2.35, { t, char: pilot, costume: suit, pose: it && it.on ? 'wave' : 'stand' })) astroFallback(c, 140, 240);
+    c.restore(); c.filter = 'none';
+  }, 'sheet');
+  const info = el('div', 'dr-info');
+  if (it) {
+    const nm = el('b', null, it.name); if (it.on) nm.appendChild(icon('check')); info.appendChild(nm);
+    const sub = it.locked ? it.why : it.on ? T(step === 'pilot' ? 'ch_playing' : step === 'ship' ? 'cs_nowShip' : 'cs_nowWearing') : it.sub || '';
+    if (sub) info.appendChild(el('small', it.locked ? 'why' : '', sub));
+    if (it.prog != null) info.appendChild(progBar(it.prog));
   }
-  // 4) ship paint (shared by both)
-  const skins = M.SKINS || [];
-  if (skins.length) {
-    body.appendChild(el('p', 'sec-title', T('cs_skins')));
-    const g = el('div', 'cards skins'), curSkin = idOf(MM('skin')) || 'falak';
-    for (const S of skins) {
-      const ss = MM('skinState', S.id), owned = ss ? !!ss.owned : (!!MM('ownsSkin', S.id) || S.id === 'falak'), on = ss ? !!ss.wearing : S.id === curSkin, src = S.src || { type: 'free' };
-      const btn = on ? { text: '✓', cls: 'sec', disabled: true } : owned ? { text: T('paint'), cls: 'sec', onClick: () => { if (MM('wearSkin', S.id)) { hook('sfx', 'chime'); hook('onChar', ch); } openSheet('costumes'); } } : { text: T('bg_locked'), disabled: true };
-      const cc = el('div', 'card skin' + (on ? ' on' : '') + (owned ? '' : ' locked'));
-      const cnv = mk(240, 150); cnv.setAttribute('aria-hidden', 'true'); cc.appendChild(cnv);
-      setTimeout(() => drawCardPic(cnv, 'skin', S.id, !owned), 20);
-      cc.appendChild(el('b', null, T('sk_' + S.id)));
-      if (!owned) cc.appendChild(el('small', 'src', srcText(src)));
-      cc.appendChild(cardBtn(btn));
-      g.appendChild(cc);
+  stage.appendChild(info);
+  const cta = el('div', 'dr-cta');
+  if (it && it.act) { const b = cardBtn({ text: it.act.text, price: it.act.price, disabled: it.act.disabled, cls: it.act.price != null ? '' : 'sec', onClick: it.act.go }); b.classList.add('dr-go'); cta.appendChild(b); }
+  else if (it && it.locked) cta.appendChild(withIc('lock', T('bg_locked'), 'dr-lockline'));
+  stage.appendChild(cta);
+  wrap.appendChild(stage);
+  // ---- side: steps, group switch, the row of choices, next ----
+  const side = el('div', 'dr-side');
+  const steps = el('div', 'dr-steps'); steps.setAttribute('role', 'tablist');
+  [['pilot', 'cs_step1'], ['suit', 'cs_step2'], ['ship', 'cs_step3']].forEach(([id, k], i) => {
+    const b = el('button', 'dr-step' + (id === step ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', id === step ? 'true' : 'false');
+    b.appendChild(el('i', null, nf(i + 1))); b.appendChild(el('span', null, T(k)));
+    b.onclick = () => { if (dr.step !== id) { dr.step = id; openSheet('costumes'); } };
+    steps.appendChild(b);
+  });
+  side.appendChild(steps);
+  if (step === 'suit') {
+    const sg = el('div', 'dr-groups');
+    for (const [g, k] of [['color', 'cs_free'], ['perk', 'cs_special']]) {
+      const b = el('button', 'dr-group' + (dr.group === g ? ' on' : ''), T(k)); b.type = 'button'; b.setAttribute('aria-pressed', dr.group === g ? 'true' : 'false');
+      b.onclick = () => { if (dr.group !== g) { dr.group = g; openSheet('costumes'); } };
+      sg.appendChild(b);
     }
-    body.appendChild(g);
+    side.appendChild(sg);
   }
+  const strip = el('div', 'dr-strip' + (step === 'ship' ? ' wide' : '')); strip.setAttribute('role', 'listbox'); dragScroll(strip);
+  items.forEach((x, i) => {
+    const b = el('button', 'dr-opt' + (x === it ? ' sel' : '') + (x.on ? ' on' : '') + (x.locked ? ' locked' : '')); b.type = 'button';
+    b.setAttribute('role', 'option'); b.setAttribute('aria-selected', x === it ? 'true' : 'false'); b.setAttribute('aria-label', x.name + (x.on ? ' · ' + T('wearing') : x.locked ? ' · ' + T('bg_locked') : ''));
+    const pc = step === 'ship' ? mk(160, 100) : mk(120, 120); pc.setAttribute('aria-hidden', 'true'); b.appendChild(pc);
+    setTimeout(() => {
+      if (step === 'ship') drawCardPic(pc, 'skin', x.id, x.locked);
+      else if (step === 'suit') costumePic(pc.getContext('2d'), x.id, ch, 120);
+      else { const c = pc.getContext('2d'); c.save(); c.scale(120 / 200, 120 / 200); if (!astro(c, 100, 196, 2.5, { t: 0.4, char: x.id, costume: costumeOf(x.id), pose: 'stand' })) astroFallback(c, 100, 190); c.restore(); }
+    }, 10 + i * 12);
+    if (x.on) { const m = el('em', 'dr-on'); m.appendChild(icon('check')); b.appendChild(m); }
+    else if (x.locked) { const m = el('em', 'dr-lk'); m.appendChild(icon('lock')); b.appendChild(m); }
+    b.appendChild(el('span', null, x.name));
+    b.onclick = () => { if (strip.moved) return; dr.sel[key] = x.id; hook('sfx', 'tick'); openSheet('costumes'); };
+    strip.appendChild(b);
+  });
+  side.appendChild(strip);
+  const foot = el('div', 'dr-foot');
+  foot.appendChild(el('p', 'hint', T('cs_pickHint')));
+  const nx = el('button', 'btn alt small dr-next'); nx.type = 'button';
+  const last = step === 'ship';
+  nx.textContent = last ? T('cs_done') : T('cs_next');
+  nx.onclick = () => { if (last) { closeSheet(); return; } dr.step = step === 'pilot' ? 'suit' : 'ship'; openSheet('costumes'); };
+  foot.appendChild(nx);
+  side.appendChild(foot);
+  wrap.appendChild(side);
+  body.appendChild(wrap);
+  // keep the chosen card in view
+  requestAnimationFrame(() => { const sel = strip.querySelector('.sel'); if (sel && sel.scrollIntoView) try { sel.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} });
 }
 function pickChar(id) {
   if (!MM('setChar', id)) { note(T('bg_locked')); return; }
@@ -897,7 +960,7 @@ function sheetMissions(body) {
       tx.appendChild(el('small', null, m.done ? T('ld_wait') : T('ms_prog', Math.min(m.progress, m.goal), m.goal)));
       row.appendChild(tx);
       const b = el('button', 'skip'); b.type = 'button';
-      if (m.done) { b.textContent = '✓'; b.disabled = true; b.setAttribute('aria-label', T('ms_done')); }
+      if (m.done) { b.innerHTML = svgI('check'); b.disabled = true; b.setAttribute('aria-label', T('ms_done')); }
       else {
         b.textContent = T('ld_skip', L.skipPrice); b.disabled = M.coins() < L.skipPrice;
         b.onclick = () => { if (MM('skipLadder', i)) { hook('sfx', 'tick'); openSheet('missions'); } else note(T('notEnough')); };
@@ -955,60 +1018,64 @@ function unlockPic(cnv, u) {
   if (u.kind === 'skin') drawCardPic(cnv, 'skin', u.id, false);
   else costumePic(c, u.id, CHAR(), cnv.width);
 }
+// v3.2 duels on the stage layout: the chosen rival big on the stage with its fight button; all rivals in one row
+let duelSel = null;
 function sheetDuels(body) {
-  const head = el('div', 'duel-head');
-  const say = el('p', 'say'); say.appendChild(el('b', null, T('n_usta') + ': ')); say.append(T('du_note')); head.appendChild(say);
-  const free = dayFree(), chip = el('span', 'day-chip' + (free ? ' on' : ' used'), (free ? '' : '✓ ') + T('du_day')); head.appendChild(chip);
-  body.appendChild(head);
+  const free = dayFree(), list = MM('rivalList') || [];
+  if (!duelSel || !list.some(r => r.id === duelSel)) { const f = list.find(r => r.open && !r.beaten) || list.filter(r => r.open).pop() || list[0]; duelSel = f && f.id; }
+  const k0 = list.findIndex(r => r.id === duelSel), r = list[k0] || {}, R = rivalDef(r.id) || {}, open = !!r.open, beaten = !!r.beaten;
+  const wrap = el('div', 'dr du');
+  // ---- stage ----
+  const stage = el('div', 'dr-stage');
+  const cnv = mk(400, 250); cnv.className = 'dr-cv'; cnv.setAttribute('aria-hidden', 'true'); stage.appendChild(cnv);
+  setTimeout(() => drawCardPic(cnv, 'rival', r.id, !open, beaten ? 'fixed' : 'angry'), 20);
+  const info = el('div', 'dr-info');
+  const nm = el('b', null, open || beaten ? rvName(r.id) : (lang() === 'ar' ? '؟؟؟' : '???')); if (beaten) nm.appendChild(icon('check'));
+  if (open) nm.appendChild(el('em', 'du-t', T('rv_' + r.id + '_t')));
+  info.appendChild(nm);
+  if (open) info.appendChild(el('small', 'du-q', '«' + (beaten ? T('rv_' + r.id + '_fixed') : TL('rv_' + r.id + '_taunt')) + '»'));
+  else { const prev = list[k0 - 1], needName = !r.needDone ? jName(R.need || 'mars') : prev ? rvName(prev.id) : ''; info.appendChild(el('small', 'why', T('du_lockNext', needName))); }
+  const meta = el('div', 'rv-meta');
+  const df = el('span', 'diff'); df.setAttribute('role', 'img'); df.setAttribute('aria-label', T('du_diff') + ' ' + nf(r.diff || R.diff || 1) + '/5');
+  df.appendChild(el('em', null, T('du_diff'))); for (let i = 0; i < 5; i++) df.appendChild(el('i', i < (r.diff || R.diff || 1) ? 'on' : '')); meta.appendChild(df);
+  if (open) { const sr3 = starRow(r.stars, 'stars3 sm'); sr3.setAttribute('aria-hidden', 'false'); sr3.setAttribute('role', 'img'); sr3.setAttribute('aria-label', T('a_stars', starCount(r.stars))); meta.appendChild(sr3); }
+  if (open && r.best) meta.appendChild(el('span', 'rv-best', T('du_best', r.best))); else if (open && (r.par || R.par)) meta.appendChild(el('span', 'rv-best', T('du_par', r.par || R.par)));
+  info.appendChild(meta);
+  stage.appendChild(info);
+  const cta = el('div', 'dr-cta du-cta');
+  if (open) {
+    const rw = el('div', 'rv-rew'); rw.appendChild(coinIc()); rw.append(nf(beaten ? r.rematchReward : r.firstReward)); if (free) rw.appendChild(el('em', 'x2', '×2'));
+    if (!beaten && r.unlock) { const uc = mk(64, 64); uc.className = 'rv-unl'; uc.setAttribute('aria-hidden', 'true'); setTimeout(() => unlockPic(uc, r.unlock), 40); rw.appendChild(uc); }
+    rw.title = beaten ? T('du_reward', r.rematchReward) : T('du_reward', r.firstReward) + (r.unlock ? ' · ' + T('du_unlock') : ''); rw.setAttribute('aria-label', rw.title);
+    cta.appendChild(rw);
+    const b = el('button', 'dr-go' + (beaten ? ' sec' : '')); b.type = 'button'; b.textContent = beaten ? rematchText() : T('du_fight'); b.onclick = () => startDuelUI(r.id); cta.appendChild(b);
+  } else cta.appendChild(withIc('lock', T('bg_locked'), 'dr-lockline'));
+  stage.appendChild(cta);
+  wrap.appendChild(stage);
+  // ---- side ----
+  const side = el('div', 'dr-side');
+  const head = el('div', 'hg-say du-say'); const sp = el('p'); sp.appendChild(el('b', null, T('n_usta') + ': ')); sp.append(T('du_note')); head.appendChild(sp);
+  head.appendChild(free ? el('span', 'day-chip on', T('du_day')) : withIc('check', T('du_day'), 'day-chip used'));
+  side.appendChild(head);
   const br = el('div', 'boosts in-sheet'); br.dataset.none = '1'; br.setAttribute('role', 'group'); br.setAttribute('aria-label', T('bo_title')); boostRow(br, true);
-  const bw = el('div', 'boost-line'); bw.appendChild(el('span', 'label', T('bo_title'))); bw.appendChild(br); body.appendChild(bw);
-  const list = MM('rivalList') || [], wrap = el('div', 'rivals');
-  list.forEach((r, k) => {
-    const R = rivalDef(r.id) || {}, open = !!r.open, beaten = !!r.beaten;
-    const c = el('div', 'rival' + (open ? '' : ' locked') + (beaten ? ' beaten' : ''));
-    const pic = el('div', 'rv-pic'), cnv = mk(240, 150); cnv.setAttribute('aria-hidden', 'true'); pic.appendChild(cnv);
-    pic.appendChild(el('span', 'rv-num', nf(k + 1)));
-    if (!open) { const lk = el('span', 'lock'); lk.innerHTML = LOCK_SVG; pic.appendChild(lk); }
-    setTimeout(() => drawCardPic(cnv, 'rival', r.id, !open, beaten ? 'fixed' : 'angry'), 20 + k * 30);
-    c.appendChild(pic);
-    const info = el('div', 'rv-info');
-    const nm = el('div', 'rv-name'); nm.appendChild(el('b', null, open || beaten ? rvName(r.id) : (lang() === 'ar' ? '؟؟؟' : '???')));
-    if (open) nm.appendChild(el('small', null, T('rv_' + r.id + '_t')));
-    info.appendChild(nm);
-    if (open) info.appendChild(el('p', 'rv-quote', '«' + (beaten ? T('rv_' + r.id + '_fixed') : TL('rv_' + r.id + '_taunt')) + '»'));
-    const meta = el('div', 'rv-meta');
-    const df = el('span', 'diff'); df.setAttribute('role', 'img'); df.setAttribute('aria-label', T('du_diff') + ' ' + nf(r.diff || R.diff || 1) + '/5');
-    df.appendChild(el('em', null, T('du_diff')));
-    for (let i = 0; i < 5; i++) df.appendChild(el('i', i < (r.diff || R.diff || 1) ? 'on' : '')); meta.appendChild(df);
-    if (open) { const sr3 = starRow(r.stars, 'stars3 sm'); sr3.setAttribute('aria-hidden', 'false'); sr3.setAttribute('role', 'img'); sr3.setAttribute('aria-label', T('a_stars', starCount(r.stars))); meta.appendChild(sr3); }
-    if (open && r.best) meta.appendChild(el('span', 'rv-best', T('du_best', r.best)));
-    else if (open && (r.par || R.par)) meta.appendChild(el('span', 'rv-best', T('du_par', r.par || R.par)));
-    info.appendChild(meta);
-    if (!open) {
-      const prev = list[k - 1], needName = !r.needDone ? jName(R.need || 'mars') : prev ? rvName(prev.id) : '';
-      info.appendChild(el('p', 'rv-lock', T('du_lockNext', needName)));
-    }
-    c.appendChild(info);
-    const act = el('div', 'rv-act');
-    if (open) {
-      const rw = el('div', 'rv-rew'); rw.appendChild(coinIc()); rw.append(nf(beaten ? r.rematchReward : r.firstReward));
-      if (free) rw.appendChild(el('em', 'x2', '×2'));
-      if (!beaten && r.unlock) { const uc = mk(64, 64); uc.className = 'rv-unl'; uc.setAttribute('aria-hidden', 'true'); setTimeout(() => unlockPic(uc, r.unlock), 40 + k * 30); rw.appendChild(uc); }
-      rw.title = beaten ? T('du_reward', r.rematchReward) : T('du_reward', r.firstReward) + (r.unlock ? ' · ' + T('du_unlock') : '');
-      rw.setAttribute('aria-label', rw.title);
-      act.appendChild(rw);
-      const b = el('button', 'btn ' + (beaten ? 'alt' : '') + ' fight'); b.type = 'button';
-      b.textContent = beaten ? rematchText() : T('du_fight');
-      b.onclick = () => startDuelUI(r.id);
-      act.appendChild(b);
-    } else {
-      const b = el('button', 'btn fight'); b.type = 'button'; b.disabled = true; b.innerHTML = LOCK_SVG; b.setAttribute('aria-label', T('bg_locked')); act.appendChild(b);
-    }
-    c.appendChild(act);
-    wrap.appendChild(c);
+  const bw = el('div', 'boost-line'); bw.appendChild(el('span', 'label', T('bo_title'))); bw.appendChild(br); side.appendChild(bw);
+  const strip = el('div', 'dr-strip wide du-strip'); strip.setAttribute('role', 'listbox'); dragScroll(strip);
+  list.forEach((x, k) => {
+    const b = el('button', 'dr-opt' + (x.id === duelSel ? ' sel' : '') + (x.beaten ? ' on' : '') + (x.open ? '' : ' locked')); b.type = 'button';
+    b.setAttribute('role', 'option'); b.setAttribute('aria-selected', x.id === duelSel ? 'true' : 'false');
+    b.setAttribute('aria-label', nf(k + 1) + ' · ' + (x.open || x.beaten ? rvName(x.id) : T('bg_locked')));
+    const pc = mk(160, 100); pc.setAttribute('aria-hidden', 'true'); b.appendChild(pc); setTimeout(() => drawCardPic(pc, 'rival', x.id, !x.open, x.beaten ? 'fixed' : 'angry'), 30 + k * 25);
+    b.appendChild(el('em', 'du-n', nf(k + 1)));
+    if (x.beaten) { const m = el('em', 'dr-on'); m.appendChild(icon('check')); b.appendChild(m); } else if (!x.open) { const m = el('em', 'dr-lk'); m.appendChild(icon('lock')); b.appendChild(m); }
+    b.appendChild(el('span', null, x.open || x.beaten ? rvName(x.id) : (lang() === 'ar' ? '؟؟؟' : '???')));
+    b.onclick = () => { if (strip.moved) return; duelSel = x.id; hook('sfx', 'tick'); openSheet('duels'); };
+    strip.appendChild(b);
   });
+  side.appendChild(strip);
+  wrap.appendChild(side);
   body.appendChild(wrap);
-  const firstOpen = list.find(r => r.open && !r.beaten); if (firstOpen) bakeSoon(themeOf((rivalDef(firstOpen.id) || {}).theme));
+  requestAnimationFrame(() => { const sel = strip.querySelector('.sel'); if (sel && sel.scrollIntoView) try { sel.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} });
+  const firstOpen = list.find(x => x.open && !x.beaten); if (firstOpen) bakeSoon(themeOf((rivalDef(firstOpen.id) || {}).theme));
 }
 // Rematches are free (owner decision): "Rematch" with no price
 function rematchText() { const s = T('du_rematch'); return !s || s === 'du_rematch' || /undefined|NaN/.test(s) ? TT('b_rematch', 'عيدها', 'Rematch') : s; }
@@ -1024,7 +1091,7 @@ function sheetBadges(body) {
     const name = b.tiered ? T('bc_' + b.id) : T('bg_' + b.id);
     const desc = b.tiered ? T('bc_' + b.id + '_d', b.goal) : T('bg_' + b.id + '_d');
     const cc = card(cnv => medal(cnv.getContext('2d'), b.id, tier, 192), name, desc, null, b.tier > 0 ? '' : 'locked');
-    const chip = el('span', 'tier', b.tiered ? (b.done ? T('tier_all') : b.tier > 0 ? T('tier_' + (b.tier - 1)) : T('tier_none')) : (b.done ? '✓' : T('bg_locked')));
+    const chip = el('span', 'tier', b.tiered ? (b.done ? T('tier_all') : b.tier > 0 ? T('tier_' + (b.tier - 1)) : T('tier_none')) : (b.done ? null : T('bg_locked'))); if (!b.tiered && b.done) chip.appendChild(icon('check'));
     cc.appendChild(chip);
     if (!b.done && b.tiered) {
       cc.appendChild(progBar(b.progress / Math.max(1, b.goal)));
@@ -1190,8 +1257,8 @@ function rivalHud(r) {
   if (intro !== hc.rvIn) { const b = $('rivalBar'); b.style.opacity = intro.toFixed(2); b.style.transform = intro < 1 && !REDUCED ? 'translateY(' + Math.round((1 - intro) * -24) + 'px)' : ''; hc.rvIn = intro; }
   if (!!r.stun !== hc.rvStun) { $('rivalBar').classList.toggle('stun', !!r.stun); hc.rvStun = !!r.stun; }
   // v3.1 big bosses: parts left (⚙ 3/4), a shield icon while the shield generator stands
-  const pk = (r.partsN | 0) ? (r.parts | 0) + '/' + (r.partsN | 0) + (r.core ? '' : ' 🛡') : '';
-  if (pk !== hc.rvParts) { const e = $('rvParts'); if (e) { e.hidden = !pk; e.textContent = pk ? '⚙ ' + pk : ''; e.title = T('h_parts'); } hc.rvParts = pk; }
+  const pk = (r.partsN | 0) ? (r.parts | 0) + '/' + (r.partsN | 0) + (r.core ? '' : '+') : '';
+  if (pk !== hc.rvParts) { const e = $('rvParts'); if (e) { e.hidden = !pk; e.innerHTML = ''; if (pk) { e.appendChild(icon('gear')); e.append((r.parts | 0) + '/' + (r.partsN | 0)); if (!r.core) e.appendChild(icon('shield', 'sh')); } e.title = T('h_parts'); } hc.rvParts = pk; }
   if (f !== hc.rvF) {
     $('rvFill').style.transform = 'scaleX(' + f.toFixed(4) + ')';
     if (hc.rvF != null && f < hc.rvF && !REDUCED) { const b = $('rivalBar'); b.classList.remove('hit'); void b.offsetWidth; b.classList.add('hit'); }
@@ -1298,7 +1365,7 @@ export function hud(s) {
 export function showPause(on) {
   const p = $('pause'); if (!p) return;
   p.hidden = !on;
-  $('pauseBtn').textContent = on ? '▶' : 'II';
+  $('pauseBtn').innerHTML = svgI(on ? 'play' : 'pause');
   if (on) { syncMute(); syncFps(); hideNote(); const t = $('toast'); if (t) t.hidden = true; if (kbd) try { $('resumeBtn').focus({ preventScroll: true }); } catch (e) {} }
 }
 
@@ -1325,10 +1392,11 @@ function resultParts(r) {
 }
 // v3 medals: finish, no damage, every pod rescued, score
 const MEDAL_IDS = ['finish', 'noDamage', 'rescue', 'score'];
+const MEDAL_IC = { finish: 'check', noDamage: 'heart', rescue: 'bot', score: 'star' };
 function medalRow(arr, isNew = [], big = false, small = false) {
   const s = el('span', 'medals4' + (big ? ' big' : small ? ' sm' : '')); s.setAttribute('aria-hidden', 'true');
 
-  MEDAL_IDS.forEach((id, k) => { const i = el('i', 'medal m-' + id + (arr && arr[k] ? ' on' : '') + (isNew.includes(k) ? ' new' : '')); if (isNew.includes(k)) i.style.animationDelay = (1.4 + isNew.indexOf(k) * 0.3) + 's'; s.appendChild(i); });
+  MEDAL_IDS.forEach((id, k) => { const i = el('i', 'medal m-' + id + (arr && arr[k] ? ' on' : '') + (isNew.includes(k) ? ' new' : '')); i.innerHTML = svgI(MEDAL_IC[id]); if (isNew.includes(k)) i.style.animationDelay = (1.4 + isNew.indexOf(k) * 0.3) + 's'; s.appendChild(i); });
   return s;
 }
 const resultTotal = (r, parts) => r.win ? (r.total != null ? r.total : parts.reduce((a, p) => a + p.n, 0)) : (r.kept || 0);
@@ -1348,6 +1416,7 @@ function showParts(parts, upto, f) {
 function endCount() {
   if (!count) return;
   const c = count; stopCount();
+  if (c.rq && lastRes && !$('over').hidden && !c.leaving) setTimeout(() => { if (!rq && !$('over').hidden && lastRes === c.res) rqStart(lastRes.rq); }, REDUCED ? 0 : 350);
   $('swCoins').textContent = nf(c.total); showParts(c.parts, c.parts.length - 1, 1); syncCoins(c.base + c.total);
   bump($('swCoins')); hook('sfx', 'chime');
 }
@@ -1356,7 +1425,7 @@ function runCount(r) {
   const parts = resultParts(r), total = resultTotal(r, parts);
   const now = M.coins(), base = Math.max(0, now - total);
   const lens = parts.map(p => p.n > 0 ? clamp(0.35 + p.n / 400, 0.45, 1.1) : 0.05);
-  count = { parts, total, base, lens, t: -0.45, last: performance.now(), tick: 0, fly: 0, raf: 0 };
+  count = { parts, total, base, lens, t: -0.45, last: performance.now(), tick: 0, fly: 0, raf: 0, rq: true, res: r };
   $('swCoins').textContent = '0'; showParts(parts, -1, 0); syncCoins(base);
   if (REDUCED || total <= 0) { endCount(); return; }
   const step = now2 => {
@@ -1483,39 +1552,8 @@ function fillResult(r, animate) {
     fact.hidden = true;
     addAnim($('avOver'), t => drawDuoCanvas($('avOver'), t, { abood: { pose: r.win ? 'cheer' : 'sad' }, nabeeh: { mood: r.win ? 'happy' : 'sad' } }), 'over');
   }
-  // unlock line (next journey)
-  const ul = $('overUnlock');
-  if (!duel && r.win && r.unlocked) { ul.hidden = false; ul.textContent = T('r_unlocked', jName(r.unlocked)); } else ul.hidden = true;
-  // banners: ladder level-up, Mozah joined, duel unlock card
-  const ex = $('overExtra'); ex.innerHTML = '';
-  if (r.levelUp) { const lu = el('p', 'banner lvl'); lu.appendChild(el('b', null, '▲ ')); lu.append(T('ld_up', r.levelUp.lv, r.levelUp.mult, r.levelUp.reward)); ex.appendChild(lu); }
-  if (!duel && r.win && r.hardOpen && (r.newMedals || []).length && MM('medalsOf', r.jid) >= 12) { const hb = el('p', 'banner lvl'); hb.appendChild(el('b', null, '★ ')); hb.append(T('md_hard')); ex.appendChild(hb); }
-  if (r.girl) {
-    const gb = el('button', 'banner girl'); gb.type = 'button'; const cv = mk(64, 64); cv.setAttribute('aria-hidden', 'true');
-    const c = cv.getContext('2d'); c.save(); c.scale(64 / 200, 64 / 200); c.translate(0, 90); astro(c, 100, 194, 2.6, { t: 0.4, char: 'mozah', costume: costumeOf('mozah'), pose: 'wave' }); c.restore();
-    gb.appendChild(cv); gb.appendChild(el('span', null, T('girlNew')));
-    gb.onclick = () => { endCount(); pendingSheet = 'costumes'; hook('onQuit'); };
-    ex.appendChild(gb);
-  }
-  const unl = duel ? (r.win && r.unlock) : (r.bossUnlock || (r.levelUp && r.levelUp.unlock));
-  if (unl && unl.id) {
-    const u = unl, uc = el('div', 'banner unlock-card'), cv = mk(96, 96); cv.setAttribute('aria-hidden', 'true'); uc.appendChild(cv); unlockPic(cv, u);
-    const tx = el('div'); tx.appendChild(el('small', null, T('du_unlock'))); tx.appendChild(el('b', null, u.kind === 'skin' ? T('sk_' + u.id) : T('cs_' + u.id))); uc.appendChild(tx);
-    const isOn = u.kind === 'skin' ? idOf(MM('skin')) === u.id : costumeOf() === u.id;
-    const wb = el('button', 'btn alt small'); wb.type = 'button'; wb.textContent = isOn ? T('wearing') : (u.kind === 'skin' ? T('paint') : T('wear')); wb.disabled = isOn;
-    wb.onclick = () => { const ok = u.kind === 'skin' ? MM('wearSkin', u.id) : MM('wearCostume', u.id); if (ok) { hook('sfx', 'chime'); hook('onChar', CHAR()); wb.textContent = T('wearing'); wb.disabled = true; } };
-    uc.appendChild(wb); ex.appendChild(uc);
-  }
-  ex.hidden = !ex.childElementCount;
-  // missions finished + new badges
-  const ms = $('overMissions'); ms.innerHTML = '';
-  for (const m of r.missions || []) ms.appendChild(el('span', 'badge-chip ms-chip', T((m.set === 'ladder' ? 'lm_' : 'ms_') + m.kind, m.goal) + (m.reward ? ' · ' + T('bg_reward', m.reward) : '')));
-  const bs = $('overBadges'); bs.innerHTML = '';
-  for (const b of r.badges || []) {
-    const chip = el('span', 'badge-chip'), cnv = mk(48, 48); cnv.setAttribute('aria-hidden', 'true'); medal(cnv.getContext('2d'), b.id, b.tiered ? b.tier : 3, 48);
-    chip.appendChild(cnv); chip.append((b.tiered ? T('bc_' + b.id) + ' · ' + T('tier_' + b.tier) : T('bg_' + b.id)) + ' · ' + T('bg_reward', b.reward || 0)); bs.appendChild(chip);
-  }
-  const nd = $('overNudge'), ntx = nudge(r); nd.hidden = !ntx; nd.textContent = ntx;
+  // v3.2: unlocks, level-ups, badges and missions no longer pile up on the card: they play as toasts (rqItems)
+  r.rq = rqItems(r, duel);
   // buttons: legs = Next / Retry / Station; duels = Duels / Rematch / Station
   const nb = $('nextBtn'), rb = $('retryBtn');
   if (duel) {
@@ -1532,6 +1570,87 @@ function fillResult(r, animate) {
   if (!animate) { // re-render after a language switch: final numbers, no recount
     const parts = resultParts(r), total = resultTotal(r, parts);
     $('swCoins').textContent = nf(total); showParts(parts, parts.length - 1, 1); syncCoins();
+  }
+}
+
+// =============================================================================================
+// v3.2 reward toasts. News (level-up, new journey, badges, missions) plays one by one and moves on by itself; a tap skips
+// to the next. Choices (wear the unlocked suit, meet Mozah) come last and wait for an answer.
+function rqItems(r, duel) {
+  const out = [], picIcon = (name, cls) => box => { box.className = 'rq-pic ' + (cls || ''); box.innerHTML = svgI(name); };
+  const picCanvas = (draw, cls) => box => { box.className = 'rq-pic cv ' + (cls || ''); box.innerHTML = ''; const cv = mk(96, 96); box.appendChild(cv); draw(cv); };
+  if (r.levelUp) out.push({ kick: () => T('rq_level'), title: () => T('ld_up', r.levelUp.lv, r.levelUp.mult, r.levelUp.reward), pic: picIcon('up', 'teal') });
+  if (!duel && r.win && r.unlocked) out.push({ kick: () => T('rq_unlock'), title: () => jName(r.unlocked), sub: () => T('r_unlocked', jName(r.unlocked)),
+    pic: picCanvas(cv => { try { const j = M.journey(r.unlocked); cv.getContext('2d').drawImage(thumb((j && j.planet) || r.unlocked, false), -24, 0, 144, 96); } catch (e) {} }, 'planet') });
+  if (!duel && r.win && r.hardOpen && (r.newMedals || []).length && MM('medalsOf', r.jid) >= 12) out.push({ kick: () => T('rq_hard'), title: () => T('md_hard'), pic: picIcon('star', 'gold') });
+  for (const b of r.badges || []) out.push({ kick: () => T('rq_badge'), title: () => b.tiered ? T('bc_' + b.id) + ' · ' + T('tier_' + b.tier) : T('bg_' + b.id), sub: () => T('bg_reward', b.reward || 0),
+    pic: picCanvas(cv => medal(cv.getContext('2d'), b.id, b.tiered ? b.tier : 3, 96), 'medal') });
+  for (const m of r.missions || []) out.push({ kick: () => T('rq_mission'), title: () => T((m.set === 'ladder' ? 'lm_' : 'ms_') + m.kind, m.goal), sub: () => m.reward ? T('bg_reward', m.reward) : '', pic: picIcon('check', 'ok') });
+  // choices, always last
+  const unl = duel ? (r.win && r.unlock) : (r.bossUnlock || (r.levelUp && r.levelUp.unlock));
+  if (unl && unl.id) {
+    const u = unl, isSkin = u.kind === 'skin';
+    out.push({ pick: true, kick: () => T('rq_new'), title: () => isSkin ? T('sk_' + u.id) : T('cs_' + u.id), sub: () => T(isSkin ? 'rq_newSkin' : 'rq_newSuit'),
+      pic: picCanvas(cv => unlockPic(cv, u), 'deep'),
+      acts: () => [{ text: isSkin ? T('paint') : T('wear'), cls: 'btn', go: () => { const ok = isSkin ? MM('wearSkin', u.id) : MM('wearCostume', u.id); if (ok) { hook('sfx', 'chime'); hook('onChar', CHAR()); } } },
+        { text: T('rq_later'), cls: 'ghost' }] });
+  }
+  if (r.girl) out.push({ pick: true, kick: () => T('rq_girl'), title: () => T('ch_mozah'), sub: () => T('girlNew'),
+    pic: picCanvas(cv => { const c = cv.getContext('2d'); c.save(); c.scale(96 / 200, 96 / 200); c.translate(0, 70); astro(c, 100, 194, 2.6, { t: 0.4, char: 'mozah', costume: costumeOf('mozah'), pose: 'wave' }); c.restore(); }, 'deep'),
+    acts: () => [{ text: T('rq_pick'), cls: 'btn', go: () => { endCount(); rqClose(); pendingSheet = 'costumes'; hook('onQuit'); return true; } }, { text: T('rq_later'), cls: 'ghost' }] });
+  return out;
+}
+let rq = null, rqT = 0;
+function rqStart(items) {
+  rqClose();
+  if (!items || !items.length) return;
+  rq = { items, i: -1 };
+  const box = $('rq'); box.hidden = false; box.classList.remove('out');
+  rqNext();
+}
+function rqNext() {
+  if (!rq) return;
+  clearTimeout(rqT);
+  rq.i++;
+  if (rq.i >= rq.items.length) { rqClose(true); return; }
+  rqDraw(true);
+}
+function rqDraw(fresh) {
+  if (!rq) return;
+  const it = rq.items[rq.i], card = $('rqCard'), n = rq.items.length, picks = rq.items.filter(x => x.pick).length;
+  it.pic($('rqPic'));
+  $('rqKick').textContent = it.kick(); $('rqTitle').textContent = it.title(); const sub = it.sub ? it.sub() : ''; $('rqSub').textContent = sub; $('rqSub').hidden = !sub;
+  const act = $('rqAct'); act.innerHTML = '';
+  card.classList.toggle('pick', !!it.pick);
+  if (it.pick) for (const a of it.acts()) {
+    const b = el('button', a.cls, a.text); b.type = 'button';
+    b.onclick = e => { e.stopPropagation(); const stop = a.go && a.go(); if (!stop) rqNext(); };
+    act.appendChild(b);
+  }
+  const dots = $('rqDots'); dots.innerHTML = ''; for (let k = 0; k < n; k++) dots.appendChild(el('i', k === rq.i ? 'on' : k < rq.i ? 'done' : ''));
+  $('rqHint').textContent = it.pick ? '' : T('rq_tap') + ' · ' + T('rq_of', rq.i + 1, n);
+  const sk = $('rqSkip'); sk.textContent = T('rq_skip'); sk.hidden = !!it.pick || rq.i >= n - 1 - picks;
+  if (fresh) { card.classList.remove('in'); void card.offsetWidth; card.classList.add('in'); hook('sfx', it.pick ? 'chime' : 'tick'); }
+  const tm = $('rqTime');
+  tm.style.animation = 'none'; void tm.offsetWidth;
+  if (!it.pick) { const d = REDUCED ? 3.2 : 2.6; tm.style.animation = 'rqTime ' + d + 's linear both'; rqT = setTimeout(rqNext, d * 1000); }
+  if (it.pick && kbd) { const f = act.querySelector('button'); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
+}
+function rqSkip() { // jump past the news to the first choice (or close)
+  if (!rq) return;
+  const k = rq.items.findIndex((x, i) => i > rq.i && x.pick);
+  if (k < 0) { rqClose(true); return; }
+  rq.i = k - 1; rqNext();
+}
+function rqClose(done) {
+  clearTimeout(rqT);
+  const box = $('rq'); if (!box) return;
+  const was = !!rq; rq = null;
+  if (!was) { box.hidden = true; return; }
+  if (REDUCED) box.hidden = true; else { box.classList.add('out'); setTimeout(() => { if (!rq) { box.hidden = true; box.classList.remove('out'); } }, 220); }
+  if (done && lastRes && !$('over').hidden) { // Nabeeh says the next goal once the news is over
+    const ntx = nudge(lastRes), tx = $('overBotTxt');
+    if (ntx && tx) { tx.classList.add('fade'); setTimeout(() => { tx.textContent = ntx; tx.classList.remove('fade'); }, 240); }
   }
 }
 function setScore(i, val, label) {
@@ -1555,7 +1674,7 @@ export function showResult(r) {
 function relang() {
   if (!$('menu').hidden) { renderMenu(); const tx = $('botTipTxt'); if (tx) tx.textContent = TL('bot_menu'); }
   if (sheetKind) { ustaLine = ''; openSheet(sheetKind); }
-  if (!$('over').hidden && lastRes) { endCount(); fillResult(lastRes, false); }
+  if (!$('over').hidden && lastRes) { const keep = rq; rq = null; endCount(); fillResult(lastRes, false); if (keep) { keep.items = lastRes.rq; rq = keep; rqDraw(false); } }
   if (hudOn && duelOn) { const d = duelOn; setDuel(d); }
   else if (hudOn && cur.jid) setTrip(cur.jid, cur.li);
   if (hudOn) { hc.hp = undefined; hc.maxHp = undefined; hc.full = undefined; }
@@ -1567,6 +1686,11 @@ function registerSW() {
   try {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
     if (window.__aboodSW) return; window.__aboodSW = true; // game.js may register too: register once
+    if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) { // local dev: never cache, drop any old worker and its cache
+      navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+      if (window.caches) caches.keys().then(ks => ks.filter(k => k.startsWith('abood-moon-')).forEach(k => caches.delete(k))).catch(() => {});
+      return;
+    }
     const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('./sw.js').catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) { updateReady = true; maybeToast(); } });
@@ -1641,6 +1765,10 @@ export function initUI(h) {
   };
   $('quitBtn').onclick = () => { endCount(); hook('onQuit'); };
   $('over').addEventListener('pointerdown', e => { if (count && !(e.target.closest && e.target.closest('button'))) endCount(); });
+  // reward toasts: a tap moves the news on; choices wait for their buttons
+  for (const id of ['nextBtn', 'retryBtn', 'quitBtn']) $(id).addEventListener('click', () => rqClose(), true);
+  $('rq').addEventListener('click', e => { if (!rq || (e.target.closest && e.target.closest('button'))) return; const it = rq.items[rq.i]; if (it && !it.pick) rqNext(); else { const c = $('rqCard'); c.classList.remove('nudge'); void c.offsetWidth; c.classList.add('nudge'); } });
+  $('rqSkip').onclick = e => { e.stopPropagation(); rqSkip(); };
   // toast
   $('toastBtn').onclick = () => location.reload();
   // keys: Esc closes a sheet / the login gift (game.js owns P / Esc for pause in flight); Tab stays inside dialogs
@@ -1648,6 +1776,7 @@ export function initUI(h) {
   addEventListener('keydown', e => {
     kbd = true;
     if (e.key === 'Tab') { trapTab(e); return; }
+    if (rq) { const it = rq.items[rq.i]; if (e.code === 'Escape') { if (it && it.pick) rqNext(); else rqSkip(); e.stopPropagation(); return; } if ((e.code === 'Enter' || e.code === 'Space') && it && !it.pick) { rqNext(); e.preventDefault(); return; } }
     if (e.code !== 'Escape') return;
     if (!$('sheet').hidden) { closeSheet(); e.stopPropagation(); }
     else if (!$('loginPop').hidden) { $('loginPop').hidden = true; }

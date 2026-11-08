@@ -47,6 +47,20 @@ There are no aliens: the only things in space are rocks, junk left behind in orb
 - **Director:** from Venus on, the pressure rises slowly while you fly clean and eases off after hits, with a build-up
   and relax rhythm. Replays of a finished leg shuffle its waves and set pieces.
 
+## Screens and layout (v3.2)
+
+- **One play-field shape everywhere.** The field is always about 2.15:1, the shape of a phone held sideways. iPads,
+  square and 16:9 screens get bands above and below; very wide screens get bands at the sides. Dodging room and the
+  time a threat takes to cross are the same on every device. The HUD and the beam button sit in the bands when there is room.
+- **Pickups** stay inside the band the ship can reach and last 18 s. Rapid fire lasts 9 s, weapons 14 s (laser 11 s).
+- **Reward toasts.** After a leg, level-ups, new journeys, badges and finished missions play one by one over a textured
+  backdrop; each moves on by itself and a tap skips it. Choices (wear a new suit or paint, meet Mozah) come last and wait.
+  The results card itself keeps only the title, stars, scores, coins and the three buttons; Nabeeh says the next goal.
+- **Guided pickers.** Suits (pilot, suit, ship), the hangar and the duel arena share one layout: a live stage with one
+  action button, and a fixed row of choices. They fit on a phone in landscape without scrolling.
+- **Icons.** Every symbol is an ink line icon in the menu-tile style; no colour emoji.
+- Local dev (localhost, 127.0.0.1) never registers the service worker, so edits show on reload.
+
 ## Journeys (v3)
 Eight journeys of three legs each: Moon → Mars → Venus → Asteroid Belt → Jupiter → Saturn → Uranus → Neptune.
 A leg is a scripted flight of about 2½ minutes (`legPlan()` in `js/meta.js` builds it from the journey's flavour and
