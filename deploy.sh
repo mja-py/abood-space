@@ -13,7 +13,9 @@ find "$SITE" -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' -o -name
 if grep -rl __BUILD__ "$SITE"; then echo "unstamped files above"; exit 1; fi
 WT="$(mktemp -d)"
 git worktree add --detach "$WT" >/dev/null
-( cd "$WT" && git checkout --orphan gh-pages >/dev/null 2>&1 && git rm -rfq . && cp -r "$SITE"/. . && git add -A && git -c user.name="deploy" -c user.email="deploy@local" commit -qm "Build $V" && git push -f origin gh-pages )
+TMPB="deploy-$V-$$"
+( cd "$WT" && git checkout -q --orphan "$TMPB" && git rm -rfq . && cp -r "$SITE"/. . && git add -A && git -c user.name="deploy" -c user.email="deploy@local" commit -qm "Build $V" && git push -f origin "$TMPB:gh-pages" )
 git worktree remove --force "$WT"
+git branch -D "$TMPB" >/dev/null
 rm -rf "$SITE"
 echo "published build $V to gh-pages"
