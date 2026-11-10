@@ -51,6 +51,33 @@ There are no aliens: the only things in space are rocks, junk left behind in orb
   | Neptune 1 · Scrap King | a wall of scrap blocks | tunnel through the blocks, shoot the scrap flying in to rebuild it; red blocks shoot |
   | Neptune 2 · Anvil | a hammer on a long arm | leave the red column; after the slam its yellow joint takes double damage |
   | Neptune 3 · Zero | all of it | the spinning ring, then hide and seek, then the hammer |
+- **Bosses that think (v3.4):** the tricks above no longer run on a clock. Every boss has a small brain in
+  `js/bosses.js`:
+  - **It watches you.** Stay in one spot for a few seconds and it says so and goes for that spot. Its shots take
+    turns aiming at the ship and ahead of a moving ship, so neither standing still nor one steady slide is safe.
+  - **It chooses.** Each boss has three to six moves and picks the next by the situation (Magna flings its armour
+    in a ring when you are close and snipes with it when you hang back), never the same move twice running.
+  - **It reacts.** Hit it well above the pace of the fight and it defends: Scrappy snaps shut, Captain Bolt hides
+    in a bubble, Buzzy jinks out of your lane, Peekaboo blinks away, Whirly turns its thickest plates to you, the
+    Scrap King seals your tunnel, Anvil covers its core with the hammer. After it hits you it gloats and gives you a
+    breath.
+  - **It remembers.** What hit you is kept between fights (localStorage `abood-moon-bossmem-v1`); on a rematch it
+    favours that move and says so. Zero runs the three styles that hit this player the most, the worst one last.
+  - **You can read it.** A thought bubble over its head shows what it has in mind: dots (thinking), `!` (attack), an
+    eye (it noticed a habit), a target (aimed), a shield (defending), `?` (it lost you), a grin (it hit you or
+    fooled you), a spiral (dizzy: hit it now).
+
+  | Boss | New moves |
+  |---|---|
+  | Scrappy | peeks and hides when hit, rolls down your lane and comes back dizzy; knock on the shell and it answers |
+  | Captain Bolt | streams small bubbles ahead of you, sucks stray bubbles back from behind, hides in a big bubble |
+  | Buzzy | loops through the spot you are in (and may re-aim), stabs down your lane and limps home, strafes |
+  | Magna | drags scrap in from BEHIND you (the left edge flashes), snipes, pulls a fresh coat when shot bare |
+  | Radar | the beam searches, tracks and loses you (`?`); floodlight, a spotter drone, a blast over your rock, or it shoots the rock away |
+  | Peekaboo | keeps score and speeds up; a second tell (the real one sweats when you aim at it); the copies charge when time runs out |
+  | Whirly | guards, then must vent; throws the plates facing you as returning saws (leaving a hole there); drags the ship in |
+  | Scrap King | rebuilds the hole in your lane first, slides a whole wall in front of you, throws blocks, builds turrets where you like to fly |
+  | Anvil | aims ahead and learns which way you run, shifts the column late, sweeps sideways, rains debris, shields its core |
 - **Wingmen:** every rescued maintenance robot flies with you, shoots, and blocks one hit (2 at a time, 3 with Nabeeh
   level 5).
 - **Supply drones and weapon capsules (v3.3):** three cargo drones cross every leg (and one comes after each boss phase).
@@ -143,7 +170,7 @@ js/game.js                    loop, gameplay, particles, sound (ZzFX + Hijaz mus
 js/art.js                     all drawing: space, planets, ship, Abood, Nabeeh, Usta, rocks, junk, meteors
 js/ui.js                      menus, hangar, suits, missions, badges, results, HUD
 js/meta.js                    save, journeys, leg plans (timelines), assist profiles, guardians, economy, upgrades, missions, badges
-js/bosses.js                  the boss styles: clam, bubble, hornet, magnet, search, hide, vortex, builder, hammer
+js/bosses.js                  the boss brain (senses, move choice, memory, thought bubble) and the nine boss styles
 js/pieces.js                  drawing for the set pieces: turrets, grabber, tether, station walls, rescue pods, solar flare
 js/i18n.js                    Arabic + English text
 sw.js, manifest.webmanifest   offline + install (landscape, fullscreen)
@@ -169,4 +196,5 @@ without animation frames, `jump(120)` moves the leg clock, `skip()` jumps to the
 `piece('corridor')` fires any set piece (`wall squad turrets tether pods scrapRain cascade flare corridor grabber`),
 `winDuel()` fixes the boss, `beats()` lists the leg's timeline, `info()` shows the run. v3.1 adds `robot({ atk:['bomb'] })`,
 `weapon('saw')`, `wing()`, `combat()` (robots, zones, tokens), `killPart('shieldGen')`, `setXY(x, y)` and `rival()` with parts and guards. v3.3 adds `bs()` (the styled boss: style, mode, targets, HP),
-`hitBoss(n)`, `carrier()`, `picks()` and `wpn()`.
+`hitBoss(n)`, `carrier()`, `picks()` and `wpn()`. v3.4 adds `brain()` (what the boss senses and plans), `bossMove('dart')` (force a move) and
+`bossMem()` (its memory of earlier fights; `bossMem(null)` clears it).

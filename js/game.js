@@ -1372,6 +1372,7 @@ function bump(src) {
 function hurtShip(dmg, src = 'hit') {
   if (!ship.alive || ship.inv > 0 || debug.invincible || st !== 'play' || duelSafe()) return false;
   const AS = run.AS || {};
+  if (rv && rv.B && run.ds === 'fight') BS.playerHit(rv.B, rv);
   if (AS.noDamage || (AS.bossHarmless && src === 'boss')) return bump(src);
   if (ship.extraShield > 0 || ship.shieldUp) {
     // the shield booster's extra charge goes first, then the normal shield
@@ -1485,6 +1486,11 @@ const BX = {
   mob: (kind, x, y, a = {}) => { if (emobs.length >= 24) return; const life = a.life || 6; emobs.push({ kind, x, y: clamp(y, 20, H - 20), ang: Math.PI, v: a.v || 100, turn: a.turn || 1.2, life, max: life, hp: a.hp || 2, r: ER(kind), flash: 0, dead: false, beepT: 0.2 }); if (kind === 'mine') sfx.mine(); },
   touch: (x, y, r) => !!(ship && ship.alive && st === 'play' && ship.inv <= 0 && !debug.invincible && (x - ship.x) ** 2 + (y - ship.y) ** 2 < (r + shipR() * hurtK() * 0.8) ** 2),
   hurt: () => hurtShip(1, 'boss'),
+  // v3.4: what the boss brain needs: its own voice, the phase attacks, area blasts, a pull on the ship
+  rvSay: k => { const s2 = line(k); if (s2) rvSay(s2); }, talking: () => !!(rv && rv.sayT > 0),
+  atk: a => fireAtk(a), zone: (x, y, r, warn) => addZone(clamp(x, 40, W * 0.5), clamp(y, Y_MIN, Y_MAX), r, warn, rv.x, rv.y),
+  pull: (vx, vy, dt) => { if (!ship.alive) return; ship.tx = clamp((ship.tx || ship.x) + vx * dt, X_MIN, xMax()); ship.ty = clamp(ship.ty + vy * dt, Y_MIN, Y_MAX); },
+  weapon: () => ship && ship.weapon ? ship.weapon.kind : null, xMax: () => xMax(), enraged: () => !!(run && run.enraged),
   dmgRival: (d, src) => damageRival(d, src),
   addScore: (n, x, y) => addKill(n, x, y),
   coin: (x, y) => { const p = addPick('coin', x, y, 1); if (p) p.vx = -rnd(40, 120); },
@@ -1573,9 +1579,9 @@ function rigStyle(R, sty) {
     if (pts && pts.hatch) rv.ha = [pts.hatch[0] * rv.s, pts.hatch[1] * rv.s];
   }
   rv.B = BS.make(sty, rv, !!R.guardian); if (!rv.B) return;
-  const e = BS.ext(rv.B, rv);
-  rv.ymin = clamp(Y_MIN + e - 12, 60, 200); rv.ymax = clamp(Y_MAX - e + 12, 200, 340); rv.rigDx = Math.max(0, e - 100);
+  styleBounds();
 }
+function styleBounds() { const e = BS.ext(rv.B, rv); rv.ymin = clamp(Y_MIN + e - 12, 60, 200); rv.ymax = clamp(Y_MAX - e + 12, 200, 340); rv.rigDx = Math.max(0, e - 100); }
 function addGuard() {
   if (!rv || !rv.guards || rv.guards.length >= rv.guardN) return;
   const hp = Math.max(4, rv.max * 0.035);
@@ -1716,7 +1722,7 @@ function damageRival(d, src) {
   const before = rv.hp; rv.hp = Math.max(floor, rv.hp - d);
   const dealt = before - rv.hp; if (dealt <= 0) return 0;
   rv.hurt = Math.min(1, rv.hurt + 0.5); run.score += dealt; superFromDmg(dealt);
-  if (rv.B && src !== 'beam') BS.coreHit(rv.B, rv);
+  if (rv.B) BS.coreHit(rv.B, rv, dealt, src);
   if (src === 'bolt' || src === 'bot') sfxT('rockhit', 0.07, rnd(0.6, 0.75), 0.8);
   // every 10 % of HP lost drops DROPS.duel.per10 coins at the rival
   const want = Math.min(10, Math.floor((1 - rv.hp / rv.max) * 10 + 1e-6)), per = (DROPS.duel && DROPS.duel.per10) || 3;
@@ -1741,7 +1747,7 @@ function beginShift() {
   if (rv.phase.move) { rv.move = rv.phase.move; rv.blink = null; if (rv.move.mode === 'blink') rv.blinkT = 1.3; }
   if (rv.phase.shield) setShield(rv.phase.shield);
   startPhase();
-  if (rv.B) BS.shift(rv.B, rv);
+  if (rv.B) { BS.shift(rv.B, rv); styleBounds(); rv.dodge = null; }
   if (st === 'play') later2(1.4, () => makeCarrier(rv && rv.y > 200 ? Y_MIN + 50 : Y_MAX - 50));
   rvSay(line('rv_' + rv.id + '_taunt'));
   sfx.rivalPhase(); shake(6); ring(rv.x, rv.y, rv.r * 2.4, '#ff6a5a', 0.6); sparks(rv.x, rv.y, 16, '#ffb3a0', 200);
@@ -1793,6 +1799,7 @@ function moveRival(dt) {
     case 'blink': blinkMove(dt, m); return;
     default: rv.ty = 200 + (m.amp || 100) * Math.sin(TAU * rv.mt / (m.period || 6)); k = 8; cap = 900;
   }
+  if (rv.dodge) { rv.dodge.t -= dt; rv.ty = rv.dodge.y; k = 9; cap = 720; if (rv.dodge.t <= 0) rv.dodge = null; }   // v3.4: the brain steers (a sidestep, lining up a charge)
   rv.ty = clamp(rv.ty, rv.ymin != null ? rv.ymin : RV_YMIN, rv.ymax != null ? rv.ymax : RV_YMAX);
   const v = cap * dt; rv.y += clamp((rv.ty - rv.y) * (1 - Math.exp(-k * dt)), -v, v);
 }
@@ -2922,6 +2929,10 @@ window.__game = {
     picks: () => picks.filter(p => !p.dead).map(p => ({ kind: p.kind === 'capsule' ? 'capsule:' + capsuleKind(p) : p.kind, x: Math.round(p.x), y: Math.round(p.y) })),
     wpn: () => ship && ship.weapon ? { kind: ship.weapon.kind, lv: ship.weapon.lv, t: +ship.weapon.t.toFixed(1) } : null,
     hitBoss(d) { return rv ? damageRival(d, 'bolt') : 0; },
+    // v3.4: the boss brain: what it senses and plans, force a move, its memory of earlier fights
+    brain() { return rv && rv.B ? BS.peek(rv.B, rv) : null; },
+    bossMove(k) { return rv && rv.B ? BS.force(rv.B, rv, k) : false; },
+    bossMem(v) { return BS.memory(v); },
     jump(T) { // to a time in the leg: earlier beats are skipped, not fired
       if (st !== 'play' || !run || run.mode === 'duel' || rv) return false;
       run.elapsed = clamp(T, 0, run.L.dur); while (run.bi < run.beats.length && run.beats[run.bi].t < run.elapsed) run.bi++;
