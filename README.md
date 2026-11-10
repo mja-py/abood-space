@@ -35,14 +35,31 @@ There are no aliens: the only things in space are rocks, junk left behind in orb
 
   Robots fill a rage meter from time and from hits; when it is full they turn red, move faster and attack more often.
   Only a few robots may attack at once (2 at Venus, 4 at Neptune), so it stays readable.
-- **Real bosses:** each journey ends with a big machine: the rogue ship is the core, with breakable parts around it:
-  guns, bomb arms (red circles, rings with one gap), a robot hangar that launches minions and rebuilds guard drones,
-  and a shield generator that cuts the damage the core takes to a quarter. Late in the fight the boss moves into your
-  space, and at the end it makes a last stand. Guardians on legs 1 and 2 stay small and gain a guard (Venus on) and a
-  gun (Saturn on).
+- **Real bosses (v3.3):** every boss fights its own way (`js/bosses.js`). The two guardians of a journey teach a lighter
+  version first (guardian A: this journey's trick, guardian B: an earlier one), a title card names the boss, and Nabeeh
+  says the trick when the fight starts:
+
+  | Boss | Trick | How to beat it |
+  |---|---|---|
+  | Moon · Scrappy | a clam shell that shuts | wait until it opens, hit the glowing core; shoot the grey scrap it spits |
+  | Mars · Captain Bolt | bouncing bubble bombs | every bubble splits in two; the smallest pop into coins |
+  | Venus · Buzzy | the hornet leaves the edge | a dotted path shows its loop through your side; hit it while it perches (×1.5) |
+  | Belt · Magna | a magnet that wears scrap | blue pulls scrap into an orbiting armour, red flings it out in a ring |
+  | Jupiter · Radar | a searchlight | stay out of the beam or it locks on and snipes; hide behind the drifting rocks |
+  | Saturn · Peekaboo | hide and seek | look-alike boxes shuffle; the real one's eye glints; a wrong guess pops a copy |
+  | Uranus · Whirly | a spinning armour ring | shoot through the gap; from phase 2 a second ring spins the other way; shots curl |
+  | Neptune 1 · Scrap King | a wall of scrap blocks | tunnel through the blocks, shoot the scrap flying in to rebuild it; red blocks shoot |
+  | Neptune 2 · Anvil | a hammer on a long arm | leave the red column; after the slam its yellow joint takes double damage |
+  | Neptune 3 · Zero | all of it | the spinning ring, then hide and seek, then the hammer |
 - **Wingmen:** every rescued maintenance robot flies with you, shoots, and blocks one hit (2 at a time, 3 with Nabeeh
   level 5).
-- **Weapon pickups** (about 10 s): spread, piercing laser, homing missiles, saws that cut bullets.
+- **Supply drones and weapon capsules (v3.3):** three cargo drones cross every leg (and one comes after each boss phase).
+  Shoot one open for a capsule that changes weapon every 1.1 s (spread, piercing laser, homing missiles, saws): grab it
+  when it shows the one you want. The same weapon again levels it up to 3 (more spread, a wider laser, more missiles and
+  saws, more time); another weapon swaps it; a hull hit costs one level. A low hull also gets a repair from the drone.
+  Small pickups (cell, rapid, repair, shield) never stay away for long: after about 24 kills without one, one drops.
+- **Shot colours (v3.3):** your blaster is electric blue and grows with its level (rails, an arrowhead, a crackling
+  edge). Enemy shots are pink with a white core: dodge them. Grey scrap balls can be shot down.
 - **Space weather** from Jupiter on: ion storm, dark sector, magnetic field or solar wind (two on the Hard tier).
 - **Director:** from Venus on, the pressure rises slowly while you fly clean and eases off after hits, with a build-up
   and relax rhythm. Replays of a finished leg shuffle its waves and set pieces.
@@ -126,6 +143,7 @@ js/game.js                    loop, gameplay, particles, sound (ZzFX + Hijaz mus
 js/art.js                     all drawing: space, planets, ship, Abood, Nabeeh, Usta, rocks, junk, meteors
 js/ui.js                      menus, hangar, suits, missions, badges, results, HUD
 js/meta.js                    save, journeys, leg plans (timelines), assist profiles, guardians, economy, upgrades, missions, badges
+js/bosses.js                  the boss styles: clam, bubble, hornet, magnet, search, hide, vortex, builder, hammer
 js/pieces.js                  drawing for the set pieces: turrets, grabber, tether, station walls, rescue pods, solar flare
 js/i18n.js                    Arabic + English text
 sw.js, manifest.webmanifest   offline + install (landscape, fullscreen)
@@ -150,4 +168,5 @@ See [CREDITS.md](CREDITS.md) for third-party licences.
 without animation frames, `jump(120)` moves the leg clock, `skip()` jumps to the WARNING (or ends the boss on screen),
 `piece('corridor')` fires any set piece (`wall squad turrets tether pods scrapRain cascade flare corridor grabber`),
 `winDuel()` fixes the boss, `beats()` lists the leg's timeline, `info()` shows the run. v3.1 adds `robot({ atk:['bomb'] })`,
-`weapon('saw')`, `wing()`, `combat()` (robots, zones, tokens), `killPart('shieldGen')`, `setXY(x, y)` and `rival()` with parts and guards.
+`weapon('saw')`, `wing()`, `combat()` (robots, zones, tokens), `killPart('shieldGen')`, `setXY(x, y)` and `rival()` with parts and guards. v3.3 adds `bs()` (the styled boss: style, mode, targets, HP),
+`hitBoss(n)`, `carrier()`, `picks()` and `wpn()`.

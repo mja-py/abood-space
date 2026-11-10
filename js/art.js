@@ -1218,16 +1218,29 @@ export function drawWarning(c, W, y, f = 0, t = 0, mx) {
 }
 
 // ---------- bolts and lasers ----------
+// v3.3 the default blaster: electric-blue plasma, so the player's fire never shares a colour with enemy fire (pink/red).
+// It grows with the blaster level: lv 0-1 a capsule, 2-3 twin side rails, 4-5 an arrowhead, 6 a crackling ring.
 function boltSprite(lv) {
   lv = clamp(lv | 0, 0, 6);
-  return bake('bolt|' + lv, -16 - lv * 1.5, -9, 32 + lv * 3, 18, BAKE, g => {
-    const L = 9 + lv * 1.2, th = 2.6 + lv * 0.35;
+  const L = 9 + lv * 1.3, th = 2.5 + lv * 0.33, pad = 10 + lv;
+  return bake('bolt3|' + lv, -L - pad, -11 - lv * 0.8, (L + pad) * 2, 22 + lv * 1.6, BAKE, g => {
     g.globalCompositeOperation = 'lighter';
-    const gw = g.createRadialGradient(0, 0, 0, 0, 0, L + 6); gw.addColorStop(0, 'rgba(255,170,50,.55)'); gw.addColorStop(1, 'rgba(255,120,30,0)');
-    g.save(); g.scale(1, 0.45); g.fillStyle = gw; g.fillRect(-L - 8, -20, L * 2 + 16, 40); g.restore();
-    const bg = g.createLinearGradient(-L, 0, L, 0); bg.addColorStop(0, 'rgba(255,90,30,0)'); bg.addColorStop(0.5, 'rgba(255,170,50,.95)'); bg.addColorStop(1, 'rgba(255,220,120,1)');
-    g.fillStyle = bg; g.beginPath(); g.roundRect(-L, -th, L * 2, th * 2, th); g.fill();
-    g.fillStyle = 'rgba(255,255,235,1)'; g.beginPath(); g.roundRect(-L * 0.3, -th * 0.45, L * 1.2, th * 0.9, th * 0.45); g.fill();
+    const gw = g.createRadialGradient(0, 0, 0, 0, 0, L + 8); gw.addColorStop(0, 'rgba(70,150,255,.55)'); gw.addColorStop(1, 'rgba(40,110,255,0)');
+    g.save(); g.scale(1, 0.42 + lv * 0.02); g.fillStyle = gw; g.fillRect(-L - 9, -L - 9, (L + 9) * 2, (L + 9) * 2); g.restore();
+    const bg = g.createLinearGradient(-L - 4, 0, L, 0); bg.addColorStop(0, 'rgba(60,120,255,0)'); bg.addColorStop(0.45, 'rgba(90,190,255,.9)'); bg.addColorStop(1, 'rgba(200,245,255,1)');
+    g.fillStyle = bg; g.beginPath(); g.roundRect(-L - 4, -th, L * 2 + 4, th * 2, th); g.fill();
+    if (lv >= 2) { g.fillStyle = 'rgba(120,210,255,.8)'; for (const sd of [-1, 1]) { g.beginPath(); g.roundRect(-L * 0.9, sd * (th + 2.2) - 0.9, L * 1.4, 1.8, 0.9); g.fill(); } }
+    if (lv >= 4) { g.fillStyle = 'rgba(210,248,255,.95)'; g.beginPath(); g.moveTo(L + 4, 0); g.lineTo(L - 4, -th - 3); g.lineTo(L - 2, 0); g.lineTo(L - 4, th + 3); g.closePath(); g.fill(); }
+    if (lv >= 6) { g.strokeStyle = 'rgba(170,230,255,.8)'; g.lineWidth = 1; g.beginPath(); g.moveTo(-L, 0); for (let k = 1; k <= 8; k++) g.lineTo(-L + k * L / 4, (k % 2 ? -1 : 1) * (th + 4)); g.stroke(); }
+    g.fillStyle = '#ffffff'; g.beginPath(); g.roundRect(-L * 0.25, -th * 0.45, L * 1.15, th * 0.9, th * 0.45); g.fill();
+  });
+}
+function missileSprite() { // homing weapon: a little rocket (drawn along its flight angle; the flame is live)
+  return bake('missile', -14, -8, 28, 16, BAKE * 1.5, g => {
+    g.strokeStyle = INK; g.lineWidth = 1.4;
+    g.fillStyle = '#ff6ad5'; g.beginPath(); g.moveTo(-8, -2.5); g.lineTo(-11, -6.5); g.lineTo(-5, -2.5); g.closePath(); g.fill(); g.stroke(); g.beginPath(); g.moveTo(-8, 2.5); g.lineTo(-11, 6.5); g.lineTo(-5, 2.5); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#f4f2ea'; g.beginPath(); g.moveTo(10, 0); g.quadraticCurveTo(6, -3.6, -8, -3); g.lineTo(-8, 3); g.quadraticCurveTo(6, 3.6, 10, 0); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#ff6ad5'; g.beginPath(); g.moveTo(10, 0); g.quadraticCurveTo(8, -2.8, 4.5, -3); g.lineTo(4.5, 3); g.quadraticCurveTo(8, 2.8, 10, 0); g.fill();
   });
 }
 // costume bolt kinds (§5): colours from the matching costume trail [main, deep, light]
@@ -1280,7 +1293,11 @@ function kindBolt(kind, lv) {
 // kind: 'blaster' | 'bot' | ember gold cyan violet ice star champ; lv = blaster level; ang = flight angle
 export function drawBolt(c, x, y, kind = 'blaster', lv = 0, ang = 0) {
   c.save(); c.globalCompositeOperation = 'lighter'; c.translate(x, y); if (ang) c.rotate(ang);
-  if (kind === 'bot') {
+  if (kind === 'missile') {
+    const e = missileSprite(), fl = 0.7 + 0.3 * Math.sin(x * 0.3 + y);
+    c.drawImage(glow('#ff8ad8'), -24, -6, 16, 12); c.fillStyle = `rgba(255,220,120,${fl})`; c.beginPath(); c.moveTo(-9, -2); c.lineTo(-16 - 5 * fl, 0); c.lineTo(-9, 2); c.closePath(); c.fill();
+    c.globalCompositeOperation = 'source-over'; c.drawImage(e.c, e.x0, e.y0, e.w, e.h);
+  } else if (kind === 'bot') {
     c.drawImage(glow('#5ef2ff'), -12, -5, 24, 10);
     c.fillStyle = 'rgba(94,242,255,.9)'; c.beginPath(); c.roundRect(-8, -1.4, 16, 2.8, 1.4); c.fill();
     c.fillStyle = '#eaffff'; c.fillRect(-4, -0.6, 10, 1.2);
@@ -2688,26 +2705,34 @@ export function drawPulse(c, x, y, t = 0) {
 
 // ---------- enemy weapons ----------
 // hit radii (logical units) for game.js: shots pellet 6 · dart 5 · slug 9; mine 11; mini drone 10; plate 13; laser beam half-height 11
-export const ENEMY_R = { pellet: 6, dart: 5, slug: 9, mine: 11, drone: 10, plate: 13, laser: 11 };
+export const ENEMY_R = { orb: 9, pellet: 6, dart: 5, slug: 9, mine: 11, drone: 10, plate: 13, laser: 11 };
+// v3.3 enemy fire reads at a glance: PINK means dodge it (a hot ring with a white core and a dark outline, readable on
+// any background), GREY scrap means you can shoot it. Shape tells speed: round = slow, long = fast, big = heavy.
 function shotSprite(kind) {
-  if (kind === 'dart') return bake('es|dart', -18, -9, 36, 18, BAKE * 1.5, g => {
-    g.globalCompositeOperation = 'lighter'; const gw = g.createRadialGradient(4, 0, 0, 4, 0, 16); gw.addColorStop(0, 'rgba(255,220,60,.6)'); gw.addColorStop(1, 'rgba(255,170,30,0)');
+  if (kind === 'dart') return bake('es3|dart', -18, -9, 36, 18, BAKE * 1.5, g => {
+    g.globalCompositeOperation = 'lighter'; const gw = g.createRadialGradient(4, 0, 0, 4, 0, 16); gw.addColorStop(0, 'rgba(255,60,140,.6)'); gw.addColorStop(1, 'rgba(255,40,120,0)');
     g.save(); g.scale(1, 0.45); g.fillStyle = gw; g.fillRect(-18, -20, 36, 40); g.restore(); g.globalCompositeOperation = 'source-over';
-    const lg = g.createLinearGradient(-16, 0, 12, 0); lg.addColorStop(0, 'rgba(255,200,40,0)'); lg.addColorStop(0.55, '#ffd23f'); lg.addColorStop(1, '#fffbe0');
-    g.fillStyle = lg; g.strokeStyle = 'rgba(150,80,0,.9)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(13, 0); g.quadraticCurveTo(9, -4.6, -1, -3.6); g.lineTo(-16, 0); g.lineTo(-1, 3.6); g.quadraticCurveTo(9, 4.6, 13, 0); g.closePath(); g.fill(); g.stroke();
+    const lg = g.createLinearGradient(-16, 0, 12, 0); lg.addColorStop(0, 'rgba(255,45,111,0)'); lg.addColorStop(0.55, '#ff2d6f'); lg.addColorStop(1, '#ffd6e4');
+    g.fillStyle = lg; g.strokeStyle = '#3a0018'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(13, 0); g.quadraticCurveTo(9, -4.6, -1, -3.6); g.lineTo(-16, 0); g.lineTo(-1, 3.6); g.quadraticCurveTo(9, 4.6, 13, 0); g.closePath(); g.fill(); g.stroke();
     g.fillStyle = '#ffffff'; g.beginPath(); g.ellipse(7, 0, 3.6, 1.5, 0, 0, TAU); g.fill();
   });
-  if (kind === 'slug') return bake('es|slug', -20, -20, 40, 40, BAKE * 1.5, g => {
-    g.globalCompositeOperation = 'lighter'; g.fillStyle = rgrad(g, 0, 0, 0, 20, 'rgba(255,60,70,.55)', 'rgba(220,30,50,.22)', 'rgba(200,20,40,0)'); g.fillRect(-20, -20, 40, 40); g.globalCompositeOperation = 'source-over';
-    g.fillStyle = rgrad(g, -3, -3, 1, 10.5, '#ff6a7a', '#b81e30', '#5a0a14'); g.strokeStyle = INK; g.lineWidth = 2.2; g.beginPath(); g.arc(0, 0, 9.6, 0, TAU); g.fill(); g.stroke();
-    g.strokeStyle = 'rgba(255,170,170,.55)'; g.lineWidth = 1; g.beginPath(); g.arc(0, 0, 6.8, 0, TAU); g.stroke();
-    for (let k = 0; k < 6; k++) { const a = k * TAU / 6 + 0.3; g.fillStyle = '#3a0610'; g.beginPath(); g.arc(Math.cos(a) * 7.6, Math.sin(a) * 7.6, 0.9, 0, TAU); g.fill(); }
-    g.fillStyle = rgrad(g, 0, 0, 0, 4.4, '#ffffff', '#fff0f0', 'rgba(255,200,200,0)'); g.beginPath(); g.arc(0, 0, 4.4, 0, TAU); g.fill();
+  if (kind === 'slug') return bake('es3|slug', -20, -20, 40, 40, BAKE * 1.5, g => {
+    g.globalCompositeOperation = 'lighter'; g.fillStyle = rgrad(g, 0, 0, 0, 20, 'rgba(255,40,110,.55)', 'rgba(220,30,90,.22)', 'rgba(200,20,80,0)'); g.fillRect(-20, -20, 40, 40); g.globalCompositeOperation = 'source-over';
+    g.fillStyle = rgrad(g, -3, -3, 1, 10.5, '#ff7aa6', '#c4174f', '#5a0a24'); g.strokeStyle = INK; g.lineWidth = 2.2; g.beginPath(); g.arc(0, 0, 9.6, 0, TAU); g.fill(); g.stroke();
+    g.strokeStyle = 'rgba(255,190,210,.6)'; g.lineWidth = 1; g.beginPath(); g.arc(0, 0, 6.8, 0, TAU); g.stroke();
+    for (let k = 0; k < 6; k++) { const a = k * TAU / 6 + 0.3; g.fillStyle = '#3a0618'; g.beginPath(); g.arc(Math.cos(a) * 7.6, Math.sin(a) * 7.6, 0.9, 0, TAU); g.fill(); }
+    g.fillStyle = rgrad(g, 0, 0, 0, 4.4, '#ffffff', '#fff0f4', 'rgba(255,200,220,0)'); g.beginPath(); g.arc(0, 0, 4.4, 0, TAU); g.fill();
   });
-  return bake('es|pellet', -14, -14, 28, 28, BAKE * 1.5, g => {
-    g.globalCompositeOperation = 'lighter'; g.fillStyle = rgrad(g, 0, 0, 0, 14, 'rgba(255,110,50,.6)', 'rgba(255,60,40,.22)', 'rgba(255,40,40,0)'); g.fillRect(-14, -14, 28, 28); g.globalCompositeOperation = 'source-over';
-    g.fillStyle = rgrad(g, -2, -2, 0.5, 7, '#fff3b0', '#ff8a3d', '#e0402a'); g.strokeStyle = '#7a1018'; g.lineWidth = 1.6; g.beginPath(); g.arc(0, 0, 6.4, 0, TAU); g.fill(); g.stroke();
-    g.fillStyle = 'rgba(255,255,255,.95)'; g.beginPath(); g.ellipse(-2.2, -2.4, 1.8, 1.2, -0.6, 0, TAU); g.fill();
+  if (kind === 'orb') return bake('es3|orb', -13, -13, 26, 26, BAKE * 1.5, g => { // a grey scrap ball with glowing cracks: shoot it
+    g.fillStyle = rgrad(g, -3, -3, 1, 10, '#c9cfdc', '#8d94a8', '#4a4f63'); g.strokeStyle = INK; g.lineWidth = 2; g.beginPath(); g.arc(0, 0, 9, 0, TAU); g.fill(); g.stroke();
+    g.strokeStyle = '#ff9a3c'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(-5, -4); g.lineTo(-1, -1); g.lineTo(-3, 3); g.moveTo(-1, -1); g.lineTo(4, -2); g.lineTo(6, 2); g.stroke();
+    g.fillStyle = '#c7cedb'; g.beginPath(); g.arc(3, 4.5, 1.3, 0, TAU); g.arc(-5.5, 2, 1.1, 0, TAU); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.75)'; g.beginPath(); g.ellipse(-3, -5, 2.6, 1.3, -0.5, 0, TAU); g.fill();
+  });
+  return bake('es3|pellet', -14, -14, 28, 28, BAKE * 1.5, g => {
+    g.globalCompositeOperation = 'lighter'; g.fillStyle = rgrad(g, 0, 0, 0, 14, 'rgba(255,50,130,.65)', 'rgba(255,40,110,.25)', 'rgba(255,40,110,0)'); g.fillRect(-14, -14, 28, 28); g.globalCompositeOperation = 'source-over';
+    g.fillStyle = rgrad(g, 0, 0, 0.5, 6.6, '#ffffff', '#ff7aa6', '#ff2d6f'); g.strokeStyle = '#3a0018'; g.lineWidth = 1.8; g.beginPath(); g.arc(0, 0, 6.4, 0, TAU); g.fill(); g.stroke();
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(0, 0, 2.6, 0, TAU); g.fill();
   });
 }
 // kind: 'pellet' (red-orange ball, r 6) | 'dart' (fast yellow streak, r 5; drawn along ang) | 'slug' (heavy dark-red ball, r 9)
@@ -2716,8 +2741,10 @@ export function drawEnemyShot(c, kind, x, y, ang = 0, t = 0) {
   c.save(); c.translate(x, y);
   if (kind === 'dart') c.rotate(ang);
   else if (kind === 'slug') c.rotate(t * 5);
+  else if (kind === 'orb') c.rotate(t * 3 + x * 0.02);
   else if (!REDUCED) { const k = 1 + 0.08 * Math.sin(t * 14 + x * 0.05); c.scale(k, k); }
   c.drawImage(e.c, e.x0, e.y0, e.w, e.h);
+  if (kind === 'pellet' && !REDUCED) { c.rotate(t * 6); c.strokeStyle = 'rgba(255,255,255,.75)'; c.lineWidth = 1.2; c.setLineDash([3, 4]); c.beginPath(); c.arc(0, 0, 9, 0, TAU); c.stroke(); c.setLineDash([]); }
   c.restore();
 }
 let LZ = null;

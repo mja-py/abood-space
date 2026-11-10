@@ -231,10 +231,46 @@ export function drawSaw(c, x, y, t = 0, r = 11) {
   c.restore();
 }
 // the piercing laser weapon: a beam across the lane
-export function drawLaserWeapon(c, x0, y, x1, t = 0) {
+export function drawLaserWeapon(c, x0, y, x1, t = 0, lv = 1) {
+  const k = 1 + (lv - 1) * 0.45;
   c.save(); c.globalCompositeOperation = 'lighter';
-  c.strokeStyle = 'rgba(94,242,255,.35)'; c.lineWidth = 12 + Math.sin(t * 40) * 2; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
-  c.strokeStyle = 'rgba(220,252,255,.95)'; c.lineWidth = 3.5; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
+  c.strokeStyle = 'rgba(94,242,255,.3)'; c.lineWidth = (12 + Math.sin(t * 40) * 2) * k; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
+  c.strokeStyle = 'rgba(160,240,255,.55)'; c.lineWidth = 6 * k; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
+  c.strokeStyle = 'rgba(240,254,255,1)'; c.lineWidth = 2.5 + lv; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
+  if (lv > 1) { c.strokeStyle = 'rgba(200,250,255,.7)'; c.lineWidth = 1.5; c.beginPath(); for (let x = x0; x < x1; x += 14) c.lineTo(x, y + Math.sin(x * 0.2 + t * 50) * 7 * k); c.stroke(); }
+  c.fillStyle = 'rgba(220,252,255,.9)'; c.beginPath(); c.arc(x0, y, 5 + 2 * lv + Math.sin(t * 60), 0, TAU); c.fill();
+  c.restore();
+}
+// v3.3 supply drone: a small cargo robot with two rotors and a hanging crate (hazard stripes, blinking beacon)
+export function drawCarrier(c, o, t = 0) {
+  c.save(); c.translate(o.x, o.y);
+  c.globalCompositeOperation = 'lighter'; c.fillStyle = `rgba(159,240,255,${0.12 + 0.08 * Math.sin(t * 5)})`; c.beginPath(); c.arc(0, 4, 30, 0, TAU); c.fill(); c.globalCompositeOperation = 'source-over';
+  c.rotate(Math.sin(o.ph) * 0.08);
+  c.strokeStyle = INK; c.lineWidth = 2;
+  // rotors
+  for (const sx of [-13, 13]) { c.beginPath(); c.moveTo(sx, -12); c.lineTo(sx, -17); c.stroke(); const w = 11 * Math.abs(Math.cos(t * 30 + sx)); c.fillStyle = 'rgba(199,206,219,.8)'; c.beginPath(); c.ellipse(sx, -18, w + 2, 2.2, 0, 0, TAU); c.fill(); c.stroke(); }
+  // body
+  c.fillStyle = o.flash > 0.4 ? '#ffffff' : '#e8ecf4'; c.beginPath(); c.roundRect(-18, -13, 36, 13, 6); c.fill(); c.stroke();
+  c.fillStyle = INK; c.beginPath(); c.roundRect(-14, -10, 9, 6, 2); c.fill(); c.fillStyle = '#5ef2ff'; c.beginPath(); c.arc(-9.5, -7, 1.6, 0, TAU); c.fill();
+  c.fillStyle = (Math.floor(t * 3) % 2) ? '#7dff9a' : '#2a8a4a'; c.beginPath(); c.arc(10, -7, 2.6, 0, TAU); c.fill(); c.stroke();
+  // cables and the crate
+  c.lineWidth = 1.4; c.beginPath(); c.moveTo(-8, 0); c.lineTo(-9, 5); c.moveTo(8, 0); c.lineTo(9, 5); c.stroke();
+  c.lineWidth = 2; c.fillStyle = o.flash > 0.4 ? '#ffffff' : '#ffd23f'; c.beginPath(); c.roundRect(-12, 5, 24, 17, 3); c.fill(); c.stroke();
+  c.save(); c.beginPath(); c.rect(-12, 5, 24, 17); c.clip(); c.fillStyle = INK; for (let k = -3; k < 4; k++) { c.beginPath(); c.moveTo(k * 8, 22); c.lineTo(k * 8 + 4, 22); c.lineTo(k * 8 + 12, 5); c.lineTo(k * 8 + 8, 5); c.closePath(); c.fill(); } c.restore();
+  c.fillStyle = '#ffffff'; c.strokeStyle = INK; c.lineWidth = 1.6; c.beginPath(); c.roundRect(-6, 9, 12, 9, 2); c.fill(); c.stroke();
+  c.strokeStyle = '#ff5a6a'; c.lineWidth = 2; c.beginPath(); c.moveTo(0, 10); c.lineTo(0, 17); c.moveTo(-4, 13.5); c.lineTo(4, 13.5); c.stroke();
+  c.restore();
+}
+// v3.3 weapon capsule: shows one weapon at a time and changes every 1.1 s; the pips underneath show the order
+const CAP = ['w_spread', 'w_laser', 'w_homing', 'w_saw'];
+export function drawCapsule(c, kind, x, y, t = 0, f = 0) {
+  drawWeaponPick(c, 'w_' + kind, x, y, t);
+  const col = WP['w_' + kind] || '#ffe066';
+  c.save(); c.translate(x, y + Math.sin(t * 2.6) * 3);
+  // a ring that drains until the next change
+  c.strokeStyle = col; c.lineWidth = 3; c.lineCap = 'round'; c.beginPath(); c.arc(0, 0, 21, -Math.PI / 2, -Math.PI / 2 + TAU * (1 - f)); c.stroke();
+  c.strokeStyle = INK; c.lineWidth = 1.2; c.beginPath(); c.arc(0, 0, 23.5, 0, TAU); c.stroke();
+  CAP.forEach((k, i) => { const on = k === 'w_' + kind; c.fillStyle = on ? WP[k] : 'rgba(255,255,255,.35)'; c.strokeStyle = INK; c.lineWidth = 1.2; c.beginPath(); c.arc((i - 1.5) * 9, 30, on ? 3.6 : 2.6, 0, TAU); c.fill(); c.stroke(); });
   c.restore();
 }
 // an area-blast marker: a red circle that fills as the blast nears (f 0..1), then the blast (boom 0..1)

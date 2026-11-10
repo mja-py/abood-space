@@ -394,6 +394,18 @@ export const GUARDIANS = {
   ],
   neptune: [],   // Neptune's three legs end with Scrap King, Anvil and Zero
 };
+// v3.3: every boss fights its own way (js/bosses.js). Guardian A of a journey teaches that journey's signature in a lite
+// form; guardian B keeps an earlier one alive. Scale = how much bigger the journey-end body is drawn.
+export const BOSS_STYLE = {
+  khurda: ['clam', 1.45], bubolt: ['bubble', 1.4], zannana: ['hornet', 1.4], magna: ['magnet', 1.3], radar: ['search', 1.4],
+  ghummaid: ['hide', 1.4], dawwama: ['vortex', 1.25], kabeer: ['builder', 1.2], sindan: ['hammer', 1.35], sifr: [['vortex', 'hide', 'hammer'], 1.35],
+};
+const G_STYLE = { g_moon_a: 'clam', g_moon_b: 'bubble', g_mars_a: 'clam', g_mars_b: 'bubble', g_venus_a: 'hornet', g_venus_b: 'bubble',
+  g_belt_a: 'magnet', g_belt_b: 'builder', g_jupiter_a: 'search', g_jupiter_b: 'hornet', g_saturn_a: 'hide', g_saturn_b: 'magnet',
+  g_uranus_a: 'vortex', g_uranus_b: 'search' };
+for (const k in GUARDIANS) for (const g of GUARDIANS[k]) { g.style = G_STYLE[g.id] || null; delete g.plates; }
+export const styleOf = R => !R ? null : R.style || (BOSS_STYLE[R.id] || [])[0] || null;
+export const styleScale = id => (BOSS_STYLE[id] || [])[1] || 1.3;
 export function guardian(id) { for (const k in GUARDIANS) { const g = GUARDIANS[k].find(x => x.id === id); if (g) return g; } return null; }
 export const boss = id => RIVALS.find(r => r.id === id) || guardian(id) || null;
 // which boss ends a leg: leg 3 = the journey's rogue ship (Neptune: one per leg), legs 1-2 = a guardian
@@ -511,6 +523,8 @@ export function legPlan(jid, li, hard = false, seed = null) {
     const slots = [0.18, 0.4, 0.6, 0.75, 0.88].slice(0, Math.min(5, C.waves + li));
     for (const f of slots) beats.push({ t: r(f), kind: 'wave', form: 'robots', n: C.n + (li >= 2 ? 1 : 0) + (hard ? 1 : 0) });
   }
+  // v3.3 supply drones: three per leg carry a weapon capsule (the only source of weapons now)
+  for (const f of [0.22, 0.5, 0.8]) beats.push({ t: r(f), kind: 'carrier' });
   // calm, WARNING, boss
   beats.push({ t: r(0.95), kind: 'filler', dur: D, rate: 0 });
   beats.push({ t: r(0.95), kind: 'meteorsOff', dur: D });

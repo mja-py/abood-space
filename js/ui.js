@@ -1354,7 +1354,8 @@ export function hud(s) {
   if (rp !== hc.rp) { const chip = $('rapidChip'); chip.hidden = rp <= 0; if (rp > 0) chip.querySelector('i').style.transform = 'scaleX(' + rp + ')'; hc.rp = rp; }
   // v3.1: the weapon pickup in use (with its timer) and the wingmen flying with you
   const wk = s.weapon || null, wf = wk ? Math.round(clamp(+s.weaponF || 0, 0, 1) * 50) / 50 : 0;
-  if (wk !== hc.wk) { const chip = $('weaponChip'); if (chip) { chip.hidden = !wk; chip.dataset.w = wk || ''; if (wk) $('weaponName').textContent = T('wp_' + wk); } hc.wk = wk; hc.wf = -1; }
+  const wl = wk ? (s.weaponLv | 0) || 1 : 0;
+  if (wk !== hc.wk || wl !== hc.wl) { const chip = $('weaponChip'); if (chip) { chip.hidden = !wk; chip.dataset.w = wk || ''; chip.dataset.lv = wl; if (wk) $('weaponName').textContent = T('wp_' + wk); } hc.wk = wk; hc.wl = wl; hc.wf = -1; }
   if (wk && wf !== hc.wf) { const chip = $('weaponChip'); if (chip) chip.querySelector('i').style.transform = 'scaleX(' + wf + ')'; hc.wf = wf; }
   const wn = s.wings | 0;
   if (wn !== hc.wn) { const chip = $('wingChip'); if (chip) { chip.hidden = wn <= 0; $('wingN').textContent = '×' + wn; chip.setAttribute('aria-label', T('h_wings') + ' ' + wn); } hc.wn = wn; }

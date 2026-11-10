@@ -759,3 +759,8 @@ svg.si .fl{fill:currentColor;stroke-width:1.4}
 .du-n{position:absolute;top:3px;inset-inline-start:3px;min-width:20px;height:20px;display:grid;place-items:center;border-radius:50%;background:var(--ink);color:var(--cream);font:800 11px/1 var(--display);font-style:normal}
 .du-strip .dr-opt.locked span{opacity:.6}
 @media (max-height:440px){ .du .dr-cv{max-height:112px} .du-q{-webkit-line-clamp:1!important} }
+
+/* v3.3 weapon level: one dot per level after the name */
+.weapon-chip[data-lv]::after { content: ''; display: inline-block; height: 7px; margin-inline-start: 5px; vertical-align: middle;
+  background: radial-gradient(circle, #1c1530 2.6px, transparent 3px) 0 0 / 8px 7px repeat-x; width: 0; }
+.weapon-chip[data-lv="2"]::after { width: 16px; } .weapon-chip[data-lv="3"]::after { width: 24px; }

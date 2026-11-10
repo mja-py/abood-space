@@ -14,6 +14,7 @@ const ASSETS = [
   './js/i18n.js',
   './js/meta.js',
   './js/pieces.js',
+  './js/bosses.js',
   './js/vendor/zzfx.js',
   './assets/fonts/baloo-bhaijaan-2-arabic-500-normal.woff2',
   './assets/fonts/baloo-bhaijaan-2-arabic-700-normal.woff2',
