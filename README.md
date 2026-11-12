@@ -63,9 +63,8 @@ There are no aliens: the only things in space are rocks, junk left behind in orb
     breath.
   - **It remembers.** What hit you is kept between fights (localStorage `abood-moon-bossmem-v1`); on a rematch it
     favours that move and says so. Zero runs the three styles that hit this player the most, the worst one last.
-  - **You can read it.** A thought bubble over its head shows what it has in mind: dots (thinking), `!` (attack), an
-    eye (it noticed a habit), a target (aimed), a shield (defending), `?` (it lost you), a grin (it hit you or
-    fooled you), a spiral (dizzy: hit it now).
+  - **You can read it.** It says what it noticed (a speech line), and two small arrows beside it mean "hit it now".
+    (The v3.4 thought bubble and the rings drawn over the bodies are gone: nothing covers the robot art any more.)
 
   | Boss | New moves |
   |---|---|
@@ -90,6 +89,46 @@ There are no aliens: the only things in space are rocks, junk left behind in orb
 - **Space weather** from Jupiter on: ion storm, dark sector, magnetic field or solar wind (two on the Hard tier).
 - **Director:** from Venus on, the pressure rises slowly while you fly clean and eases off after hits, with a build-up
   and relax rhythm. Replays of a finished leg shuffle its waves and set pieces.
+
+## Robot families (v3.5)
+
+Every journey belongs to ONE robot family, and you watch it grow up over the three legs:
+
+| Leg | Who ends it | Body | Moves |
+|---|---|---|---|
+| 1 | the **young** one | a new small body (`y_*` in `js/art.js`) | the family's two basic moves, slower |
+| 2 | the **grown** one | the rival's own body | every family move |
+| 3 | the **giant** | a new giant body (`q_*`), about twice the size | every move, plus `brood` and `royal` |
+
+| Journey | Family | Young, grown, giant |
+|---|---|---|
+| Moon | scrap satellites (blast doors) | Bolty, Nutty, Scrappy the Giant Wreck |
+| Mars | rust pirates (bubbles) | Dusty, Rusty, Captain Bolt's Pirate Ship |
+| Venus | bees (dives) | Sparky, Stinger, Buzzy the Hive Queen |
+| Belt | magnets (scrap armour) | Pebble, Clamp, the Giant Magnet |
+| Jupiter | radar dishes (searchlight) | Blip, Ping, the Great Array |
+| Saturn | mirror orbs (hide and seek) | Shadow, Blink, the Mirror Moon |
+| Uranus | spinning tops (orbiting plates) | Spinner, Twister, the Cyclone |
+| Neptune | the black fleet | Scrap King, Anvil, Zero Prime |
+
+- **Workers in the legs.** The rage robots are the family's young body; from leg 2 on, **elites** in the grown body fly
+  with them (more HP, already half-way to rage). The Moon and Mars get harmless family squads.
+- **Giants.** `brood` opens the hatch and sends out workers; `royal` is an area attack that differs by family (blast
+  zones, a shock ring with a gap, a wall of shots with a gap, or the Hive Queen's dart fan). A giant only hurts with its
+  head when it dives, and warns longer.
+- **Nothing covers the art.** Scrappy's shell is now two blast doors that slide apart; Whirly's ring is separate plates
+  orbiting clear of the body; the magnet has no second horseshoe drawn over it.
+
+### Difficulty restudy (v3.5)
+
+Measured with a test pilot (a dodge-and-aim bot) flying all 24 legs at the ship level each journey asks for:
+
+- **Before:** with the ship's upgrades, bosses died in 13-30 s (before showing their moves), young Mars bosses could
+  not be hit (they tracked 40 px off the ship's lane with a 28 px body), and Saturn's laser robots chained hits.
+- **Now:** boss HP in a leg is `base x LEG_K x growth`, where `growth` follows the ship's firepower above what the
+  journey expects (`POWER` in `js/meta.js`, capped at x2.2). Fights measured at about 30 s (young), 40-50 s (grown)
+  and 50-70 s (giant) from Venus on; the Moon stays near 20/25/30 s and Mars near 35/55/60 s.
+- One laser sweep on screen at a time, and a sweep stops closer past the ship. Duel giants get a share of the stretch.
 
 ## Screens and layout (v3.2)
 
@@ -170,7 +209,7 @@ js/game.js                    loop, gameplay, particles, sound (ZzFX + Hijaz mus
 js/art.js                     all drawing: space, planets, ship, Abood, Nabeeh, Usta, rocks, junk, meteors
 js/ui.js                      menus, hangar, suits, missions, badges, results, HUD
 js/meta.js                    save, journeys, leg plans (timelines), assist profiles, guardians, economy, upgrades, missions, badges
-js/bosses.js                  the boss brain (senses, move choice, memory, thought bubble) and the nine boss styles
+js/bosses.js                  the boss brain (senses, move choice, memory, family stages, giant moves) and the nine boss styles
 js/pieces.js                  drawing for the set pieces: turrets, grabber, tether, station walls, rescue pods, solar flare
 js/i18n.js                    Arabic + English text
 sw.js, manifest.webmanifest   offline + install (landscape, fullscreen)
@@ -197,4 +236,4 @@ without animation frames, `jump(120)` moves the leg clock, `skip()` jumps to the
 `winDuel()` fixes the boss, `beats()` lists the leg's timeline, `info()` shows the run. v3.1 adds `robot({ atk:['bomb'] })`,
 `weapon('saw')`, `wing()`, `combat()` (robots, zones, tokens), `killPart('shieldGen')`, `setXY(x, y)` and `rival()` with parts and guards. v3.3 adds `bs()` (the styled boss: style, mode, targets, HP),
 `hitBoss(n)`, `carrier()`, `picks()` and `wpn()`. v3.4 adds `brain()` (what the boss senses and plans), `bossMove('dart')` (force a move) and
-`bossMem()` (its memory of earlier fights; `bossMem(null)` clears it).
+`bossMem()` (its memory of earlier fights; `bossMem(null)` clears it). v3.5 adds `world()` (the live arrays, for test pilots) and `info().hitLog` (what hit the ship and when).

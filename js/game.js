@@ -848,12 +848,12 @@ function setPiece(b) {
     switch (b.form) {
       case 'robots': { const n = b.n | 0 || 1;
         if (b.teach) { const o = makeRobot({ teach: b.teach, y: 200, sx: W * 0.72 }); if (o) { o.life = 16; say2('rb_' + b.teach, W * 0.55, 90, '#ffb3b3'); } break; }
-        for (let i = 0; i < n; i++) later(i * 0.7, () => makeRobot({}));
-        if (!run.robotSaid) { run.robotSaid = true; say('bot_robots', true); }
+        for (let i = 0; i < n; i++) later(i * 0.7, () => makeRobot({ elite: i < (b.elite | 0) }));
+        if (!run.robotSaid) { run.robotSaid = true; say(run.li === 0 ? 'bot_family' : 'bot_robots', true); }
         break; }
       case 'wall': for (let k = 0; k < (b.n | 0 || 1); k++) spawnWall(b.gap || 150, k); break;
       case 'squad': { const n = b.n | 0 || 4, top = Math.random() < 0.5, by = top ? rnd(Y_MIN + 30, 150) : rnd(250, Y_MAX - 30);
-        for (let i = 0; i < n; i++) later(i * 0.32, () => { const o = makeJunk('drone', W + 30, by); o.hp = 2 * (run.hpMul || 1); o.vx = -L.speed * 1.5; o.st = 'in'; o.by = by; o.ph = i * 0.9; o.move = squadMove; o.squad = true; objs.push(o); }); break; }
+        for (let i = 0; i < n; i++) later(i * 0.32, () => { const o = makeJunk('drone', W + 30, by); o.hp = 2 * (run.hpMul || 1); o.vx = -L.speed * 1.5; o.st = 'in'; o.by = by; o.ph = i * 0.9; o.move = squadMove; o.squad = true; if (A.drawRival && M.FAMILY) kinLook(o); objs.push(o); }); break; }
       case 'turrets': { const n = b.n | 0 || 1; for (let i = 0; i < n; i++) later(i * 1.5, () => spawnKind('turret', laneY(i * 2 + 1, 4))); say2('f_turret', ship.x + 40, ship.y - 40, '#ffb3b3'); break; }
       case 'tether': { const n = b.n | 0 || 1;
         for (let i = 0; i < n; i++) later(i * 2.5, () => {
@@ -955,6 +955,21 @@ function pickAtk(atk, main) {
   if (Math.random() < 0.55) return main;
   return atk[Math.floor(Math.random() * atk.length)];
 }
+// v3.5 the robots of a journey are one family: workers wear the family's young body, elites its grown body
+const KO = { t: 0, s: 1, hurt: 0, phase: 0, stun: 0, tell: 0, mood: 'angry', alpha: 1, shield: 0, shift: 0, limp: 0, thrust: 0.5 };
+const kinBase = () => (rv && rv.R && rv.R.family) || (M.FAMILY && run && run.J && M.FAMILY[run.J.id]) || 'khurda';
+function kinLook(o, elite) { const b = kinBase(); o.art = elite ? b : 'y_' + b; o.draw = drawKin; return o; }
+function drawKin(c, o) {
+  const R0 = safe(A.rivalRadius, o.art) || 18;
+  KO.t = t + (o.seed % 97) * 0.41; KO.s = o.r / R0 * (o.kinK || 1.12); KO.hurt = clamp(o.flash || 0, 0, 1); KO.phase = o.raging ? 2 : 0;
+  KO.tell = Math.max(o.tell || 0, o.raging ? 0.3 : 0); KO.thrust = o.dashing ? 1.4 : 0.5; KO.mood = o.flash > 0.6 ? 'hit' : 'angry';
+  A.drawRival(c, o.art, o.x, o.y, KO);
+  if (o.shieldBy && !o.shieldBy.dead) {
+    c.save(); c.strokeStyle = 'rgba(94,200,255,.75)'; c.lineWidth = 2; c.setLineDash([5, 5]); c.lineDashOffset = -t * 40;
+    c.beginPath(); c.moveTo(o.shieldBy.x, o.shieldBy.y); c.lineTo(o.x, o.y); c.stroke(); c.setLineDash([]);
+    c.strokeStyle = 'rgba(159,230,255,.85)'; c.lineWidth = 3; c.beginPath(); c.arc(o.x, o.y, o.r + 9, Math.PI * 0.55, Math.PI * 1.45); c.stroke(); c.restore();
+  }
+}
 function makeRobot(opt = {}) {
   const C = CUR(), n = clamp(C.attacks | 0, 1, ROBOT_ATTACKS.length);
   const atk = opt.teach ? [opt.teach] : (opt.atk || ROBOT_ATTACKS.slice(0, n));
@@ -963,12 +978,13 @@ function makeRobot(opt = {}) {
   // toughness: the journey's base HP plus about 1-2 s of the ship's focused fire (two guns on one lane), so upgrades still
   // help but never delete a robot before it can show its move
   const dps = (S.dmg || 1) * (S.fireRate || 4) * Math.min(2, S.guns || 1), tough = 0.9 + 0.2 * Math.max(0, (run.ji | 0) - 2);
-  const sy = opt.y != null ? opt.y : robotY(null), hp = ((C.hp || 14) + dps * tough) * (run.hpMul || 1) * (opt.hpK || 1);
-  const o = { type: 'junk', kind: 'robot', size: 'M', x: opt.x != null ? opt.x : W + 30, y: sy, by: sy, r: 20, hp, max: hp, pts: 70, sg: 0.06,
+  const el = !!opt.elite, sy = opt.y != null ? opt.y : robotY(null), hp = ((C.hp || 14) + dps * tough) * (run.hpMul || 1) * (opt.hpK || 1) * (el ? 1.9 : 1);
+  const o = { type: 'junk', kind: 'robot', size: 'M', x: opt.x != null ? opt.x : W + 30, y: sy, by: sy, r: el ? 25 : 20, hp, max: hp, pts: el ? 150 : 70, sg: el ? 0.1 : 0.06, elite: el,
     vx: 0, vy: 0, rot: 0, vr: 0, seed: Math.floor(Math.random() * 9999), flash: 0, dead: false, killT: 0, ph: rnd(0, TAU), wob: 0,
     st: 'in', sx: opt.sx != null ? opt.sx : rnd(W * 0.58, W - 70), sy, life: opt.life || (opt.teach ? 16 : C.life || 15), age: 0, atk, main,
-    cd: opt.teach ? 1.2 : rnd(1.0, 2.0), act: null, tell: 0, rage: 0, raging: false, strafeT: rnd(2, 4), minion: !!opt.minion, teach: !!opt.teach,
+    cd: opt.teach ? 1.2 : rnd(1.0, 2.0), act: null, tell: 0, rage: el ? 0.45 : 0, raging: false, strafeT: rnd(2, 4), minion: !!opt.minion, teach: !!opt.teach,
     shieldBy: null, dashing: false, move: robotMove, onHit: robotHit, draw: (c, o) => PZ.drawRageBot(c, o, t) };
+  if (A.drawRival && M.FAMILY) kinLook(o, el);
   objs.push(o);
   return o;
 }
@@ -1002,6 +1018,7 @@ function robotMove(o, dt) {
 function startAct(o) {
   let k = pickAtk(o.atk, o.main);
   let mate = null;
+  if (k === 'sweep' && sweeps.length) k = 'shot';   // one laser sweep on screen at a time: two crossing ones leave no way out
   if (k === 'shield') { let bd = 1e9; for (const q of objs) if (q !== o && !q.dead && q.kind === 'robot' && !q.shieldBy && q.main !== 'shield') { const d = Math.hypot(q.x - o.x, q.y - o.y); if (d < bd) { bd = d; mate = q; } } if (!mate) k = 'shot'; }
   const a = { k, t: 0, warn: teleOf(k), mate, done: false };
   o.act = a;
@@ -1010,7 +1027,7 @@ function startAct(o) {
     for (let i = 0; i < n; i++) { const lead = i ? (ship.vy || 0) * 0.5 : 0; addZone(clamp(ship.x + (i ? rnd(-30, 50) : 0), 40, W * 0.5), clamp(ship.y + lead + (i ? rnd(-60, 60) : 0), Y_MIN, Y_MAX), o.raging ? 62 : 50, a.warn + 0.15, o.x, o.y - 18); }
     sfx.mine();
   } else if (k === 'sweep') {
-    const sg = ship.y >= o.y ? 1 : -1, y1 = clamp(ship.y + sg * 80, Y_MIN - 10, Y_MAX + 10);
+    const sg = ship.y >= o.y ? 1 : -1, y1 = clamp(ship.y + sg * (o.raging ? 70 : 46), Y_MIN - 10, Y_MAX + 10);   // it stops a little past the ship: step on, or duck back behind the robot's line
     sweeps.push({ x0: o.x - 14, y0: o.y, y1, y: o.y, t: 0, warn: a.warn, dur: o.raging ? 0.7 : 0.95, ph: 'warn', hit: false, dead: false, from: o });
     sfx.laserWarn();
   } else if (k === 'dash') sfx.warn();
@@ -1384,6 +1401,7 @@ function hurtShip(dmg, src = 'hit') {
     shake(4); buzz(25); return true;
   }
   if (ship.weapon && ship.weapon.lv > 1) { ship.weapon.lv--; floatText('-1', ship.x + 20, ship.y - 30, '#ffb3a0', 15); }
+  (run.hitLog = run.hitLog || []).push(src + '@' + Math.round(run.elapsed || 0));   // for test pilots: what hit, and when
   ship.hp -= dmg; run.hits++; run.regenT = 0; run.intensity = Math.min(3, (run.intensity || 0) + 0.6 * dmg);
   run.hitTimes.push(playT);
   if (run.hitTimes.length >= 2 && playT - run.hitTimes[run.hitTimes.length - 2] < 15) run.mercyT = 8;
@@ -1450,7 +1468,11 @@ function rivalData(rid) {
 function startBoss(b) {
   const R0 = rivalData(b.id); if (!R0 || rv) return false;
   const P = run.plan || {}, k = P.bossAtk || 1, scale = b.scale || 1;
-  const R = Object.assign({}, R0, { hp: Math.round(R0.hp * scale) });
+  // v3.5: in a leg the boss's HP follows the ship's firepower above what the journey expects (meta.js POWER), so a fight
+  // always lasts long enough to see the boss think; `legK` is the family's own stretch for its giant
+  const j = run.ji | 0, pw = (S.dmg || 1) * (S.fireRate || 4) * (1 + 0.35 * (Math.max(1, S.guns || 1) - 1)), ex = (M.POWER || [])[j] || pw;
+  const grow = j >= 2 ? clamp(Math.pow(pw / ex, 0.85), 1, 2.2) : 1, hk = (R0.legK || 1) * grow;
+  const R = Object.assign({}, R0, { hp: Math.round(R0.hp * scale * hk), par: Math.round((R0.par || 60) * Math.max(1, hk)) });
   if (k !== 1) R.phases = (R0.phases || []).map(ph => Object.assign({}, ph, { atk: (ph.atk || []).map(a => Object.assign({}, a, a.every ? { every: a.every * k } : {}, a.off ? { off: a.off * k } : {})) }));
   run.frozen = true; run.fillerMul = 0; run.mixNow = null; run.meteorsOff = 1e9; run.pend.length = 0;
   run.boss = { id: R.id, final: !!b.final, guardian: !!R.guardian };
@@ -1492,6 +1514,15 @@ const BX = {
   pull: (vx, vy, dt) => { if (!ship.alive) return; ship.tx = clamp((ship.tx || ship.x) + vx * dt, X_MIN, xMax()); ship.ty = clamp(ship.ty + vy * dt, Y_MIN, Y_MAX); },
   weapon: () => ship && ship.weapon ? ship.weapon.kind : null, xMax: () => xMax(), enraged: () => !!(run && run.enraged),
   dmgRival: (d, src) => damageRival(d, src),
+  // v3.5: the giants send out workers of their family and throw shock rings
+  kin: () => { let n = 0; for (const o of objs) if (!o.dead && o.minion) n++; return n; },
+  brood: (x, y) => {
+    y = clamp(y, Y_MIN + 10, Y_MAX - 10);
+    if (CUR().attacks > 0 && !(run.AS && run.AS.noDamage)) makeRobot({ minion: true, x, y, sx: rnd(W * 0.46, W * 0.62), hpK: 0.5, life: 12 });
+    else { const o = makeJunk('drone', x, y); o.hp = 2 * (run.hpMul || 1); o.vx = -(run.L.speed || 110) * 1.3; o.st = 'in'; o.by = clamp(y + rnd(-70, 70), Y_MIN + 30, Y_MAX - 30); o.ph = rnd(0, 6); o.move = squadMove; o.squad = true; o.minion = true; kinLook(o); objs.push(o); }
+    smoke(x, y, 2, '#6d6a80');
+  },
+  gapRing: (x, y) => { rings.push({ x, y, r: 60, v: 215, a: Math.atan2(ship.y - y, ship.x - x) + rnd(-0.5, 0.5), w: 0.46, t: 0, warn: Math.max(0.6, 0.95 + ((run.AS && run.AS.warnPlus) || 0) * 0.6), ph: 'warn', hit: false, dead: false }); sfx.laserWarn(); },
   addScore: (n, x, y) => addKill(n, x, y),
   coin: (x, y) => { const p = addPick('coin', x, y, 1); if (p) p.vx = -rnd(40, 120); },
   sparks: (...a) => sparks(...a), ring: (...a) => ring(...a), smoke: (...a) => smoke(...a), explode: (...a) => explode(...a), shake: a => shake(a),
@@ -1522,7 +1553,8 @@ function startDuel(rid, quiet = false) {
   run = newRun({ mode: 'duel', rid, R, J, ji: RG ? RG.j : journeyIndex(R.need), L: { speed: 130, dur: 1, hp: 1, coin: 1, pick: 1, mix: {} }, ds: 'intro', dsT: 0, fightT: 0, last: false,
     hpMul: 1, coinMul: 1, pickMul: 1, warn: 1.1, enraged: false });
   beginRun();
-  makeRival(R);
+  const dk = safe(M.duelK, R) || 1;
+  makeRival(dk > 1 ? Object.assign({}, R, { hp: Math.round(R.hp * dk), par: Math.round((R.par || 60) * dk) }) : R);
   safe(UI.hideMenus); safe(UI.showPause, false); safe(UI.showHud, true, null, 0, { duel: true, rid });
   safe(UI.note, tf('f_duel', rvName(rid)) || rvName(rid));
   return true;
@@ -1573,15 +1605,16 @@ function rigUp(R) {
 // v3.3: a styled boss (js/bosses.js) — bigger body for the journey ends, the style's own reach decides where it can move
 function rigStyle(R, sty) {
   if (!R.guardian) {
-    rv.s = safe(M.styleScale, R.id) || 1.3; rv.r = (R.r || 34) * rv.s; safe(A.bakeRival, rv.art, rv.s);
+    if (R.giant) { rv.s = 1; rv.r = R.giant; } else { rv.s = safe(M.styleScale, R.id) || 1.3; rv.r = (R.r || 34) * rv.s; }
+    safe(A.bakeRival, rv.art, rv.s);
     const pts = typeof A.rivalPoints === 'function' ? safe(A.rivalPoints, rv.art) : null;
     if (pts && pts.muzzle) rv.mu = [pts.muzzle[0] * rv.s, pts.muzzle[1] * rv.s];
     if (pts && pts.hatch) rv.ha = [pts.hatch[0] * rv.s, pts.hatch[1] * rv.s];
   }
-  rv.B = BS.make(sty, rv, !!R.guardian); if (!rv.B) return;
+  rv.B = BS.make(sty, rv, R.stage === 1, R.stage || (R.guardian ? 1 : 3)); if (!rv.B) return;
   styleBounds();
 }
-function styleBounds() { const e = BS.ext(rv.B, rv); rv.ymin = clamp(Y_MIN + e - 12, 60, 200); rv.ymax = clamp(Y_MAX - e + 12, 200, 340); rv.rigDx = Math.max(0, e - 100); }
+function styleBounds() { const G = rv.R.giant ? rv.R.fit || [0, 0] : [0, 0], e = Math.max(BS.ext(rv.B, rv), G[1]); rv.ymin = clamp(Y_MIN + e - 12, 60, 200); rv.ymax = clamp(Y_MAX - e + 12, 200, 340); rv.rigDx = Math.max(0, e - 100, G[0] - 112); }
 function addGuard() {
   if (!rv || !rv.guards || rv.guards.length >= rv.guardN) return;
   const hp = Math.max(4, rv.max * 0.035);
@@ -1901,7 +1934,7 @@ function updateRival(dt) {
     rv.x = W + 80 + (home - (W + 80)) * easeOut(run.dsT / 2.2);
     if (!rv.introSaid && run.dsT > 0.9) { rv.introSaid = true; rvSay(line('rv_' + rv.id + '_taunt')); }
     if (!bot.duelSaid && run.dsT > 0.3 && !rv.B) { bot.duelSaid = true; say('bot_duel', true); }
-    if (run.dsT >= bossCardT) { run.ds = 'fight'; run.dsT = 0; startPhase(); if (rv.B) say('bh_' + rv.B.hint, true); }
+    if (run.dsT >= bossCardT) { run.ds = 'fight'; run.dsT = 0; startPhase(); if (rv.B) say(rv.R.giant && !run.giantSaid ? (run.giantSaid = true, 'bot_giant') : 'bh_' + rv.B.hint, true); }
     return;
   }
   if (run.ds === 'fixed') { updateFixed(dt); return; }
@@ -2351,7 +2384,7 @@ function updateObjs(dt) {
     if (ship.alive && st === 'play' && !o.harmless) {
       if (wings.length && !o.solid && wingBlock(o.x, o.y, o.r * 0.85)) { kill(o, 'ram'); continue; }
       const rr = o.r * 0.85 + shR, dx = o.x - ship.x, dy = o.y - ship.y;
-      if (dx * dx + dy * dy < rr * rr && ship.inv <= 0 && !debug.invincible) { if (hurtShip(o.dmg || 1, o.src || 'rock')) { if (o.solid) ship.inv = 0.5; else kill(o, 'ram'); } }
+      if (dx * dx + dy * dy < rr * rr && ship.inv <= 0 && !debug.invincible) { if (hurtShip(o.dmg || 1, o.src || (o.kind === 'robot' ? (o.dashing ? 'dash' : 'robot') : o.squad ? 'squad' : o.type === 'junk' ? o.kind : 'rock'))) { if (o.solid) ship.inv = 0.5; else kill(o, 'ram'); } }
     }
   }
   compact(objs, o => !o.dead);
@@ -2676,7 +2709,7 @@ function drawBossCard(c) {
   c.fillStyle = guard ? '#5ec8ff' : '#ff5a6a'; c.fillRect(0, bh - 3, W, 3); c.fillRect(0, H - bh, W, 3);
   c.globalAlpha = a; c.textAlign = 'center'; c.textBaseline = 'middle'; c.direction = rtl; c.lineJoin = 'round';
   const x = W * 0.42;
-  c.font = '800 14px ' + FONT; c.fillStyle = guard ? '#9fe6ff' : '#ff9aa6'; c.fillText(tt(guard ? 'bc_guard' : 'bc_boss'), x, H * 0.3 - 26);
+  c.font = '800 14px ' + FONT; c.fillStyle = guard ? '#9fe6ff' : '#ff9aa6'; c.fillText(tt(rv.R.giant ? 'bc_q_' + rv.id : 'bc_s' + (rv.R.stage || 3), tt(guard ? 'bc_guard' : 'bc_boss')), x, H * 0.3 - 26);
   c.font = '800 34px ' + FONT; c.lineWidth = 6; c.strokeStyle = INK; c.strokeText(rvName(rv.id), x, H * 0.3); c.fillStyle = '#ffe066'; c.fillText(rvName(rv.id), x, H * 0.3);
   if (rv.B) { const h = tt('bh_' + rv.B.hint); if (h) { c.font = '700 15px ' + FONT; c.lineWidth = 4; c.strokeText(h, x, H - bh / 2, W - 60); c.fillStyle = '#ffffff'; c.fillText(h, x, H - bh / 2, W - 60); } }
   c.restore(); c.direction = 'inherit';
@@ -2978,13 +3011,15 @@ window.__game = {
     setXY(x, y) { if (ship) { ship.tx = ship.x = clamp(x, X_MIN, xMax()); if (y != null) ship.ty = ship.y = clamp(y, Y_MIN, Y_MAX); } return ship && { x: ship.x, y: ship.y }; },
     info() {
       return run ? { st, mode: run.mode, elapsed: run.elapsed, dur: run.L.dur, objs: objs.length, meteors: meteors.length, bolts: bolts.length, picks: picks.length, parts: parts.length,
-        hp: ship.hp, maxHp: ship.maxHp, shield: ship.shieldUp, extraShield: ship.extraShield, superF, beamT, score: run.score, kills: run.kills, coins: run.coins, hits: run.hits,
+        hitLog: run.hitLog || [], hp: ship.hp, maxHp: ship.maxHp, shield: ship.shieldUp, extraShield: ship.extraShield, superF, beamT, score: run.score, kills: run.kills, coins: run.coins, hits: run.hits,
         dodged: run.meteors, supers: run.supers, mult, y: ship.y, qLevel, W, H, botY: bot.y, botSay: bot.sayT > 0 ? bot.say : '', fps: fpsCap,
         comboMax: run.comboMax, beamMax: run.beamMax, crystals: run.crystals, chain: run.chain, botKills: run.botKills, pickups: run.pickups, boost: run.boost,
         fx: S.fx, costume: S.costume, char: S.char, ds: run.ds, rid: run.rid, bumps: run.bumps, deaths: run.deaths, rescued: run.rescued, frozen: run.frozen,
         boss: run.boss && run.boss.id, fillerMul: run.fillerMul, dirK: run.dirK, dirP: run.dirP, intensity: run.intensity, mods: run.mods, bi: run.bi, assist: run.AS, easy: run.easy, hard: run.hard } : { st, qLevel, W, H, fps: fpsCap };
 
     },
+    // v3.5: the live world for test pilots (raw arrays: read, do not keep)
+    world: () => ({ objs, eshots, emobs, meteors, zones, sweeps, rings, elasers, picks, rv, ship, W, H, Y_MIN, Y_MAX }),
     stats: () => S, report: () => run && report(),
     sounds: () => Object.keys(SND), audio: () => actx && actx.state,
     run: () => run, ship: () => ship, quality: (q) => { if (q != null) { qLevel = clamp(q, 0, 3); resize(); safe(A.setArtQuality, qLevel); } return qLevel; },

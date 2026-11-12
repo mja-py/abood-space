@@ -400,10 +400,38 @@ export const BOSS_STYLE = {
   khurda: ['clam', 1.45], bubolt: ['bubble', 1.4], zannana: ['hornet', 1.4], magna: ['magnet', 1.3], radar: ['search', 1.4],
   ghummaid: ['hide', 1.4], dawwama: ['vortex', 1.25], kabeer: ['builder', 1.2], sindan: ['hammer', 1.35], sifr: [['vortex', 'hide', 'hammer'], 1.35],
 };
-const G_STYLE = { g_moon_a: 'clam', g_moon_b: 'bubble', g_mars_a: 'clam', g_mars_b: 'bubble', g_venus_a: 'hornet', g_venus_b: 'bubble',
-  g_belt_a: 'magnet', g_belt_b: 'builder', g_jupiter_a: 'search', g_jupiter_b: 'hornet', g_saturn_a: 'hide', g_saturn_b: 'magnet',
-  g_uranus_a: 'vortex', g_uranus_b: 'search' };
-for (const k in GUARDIANS) for (const g of GUARDIANS[k]) { g.style = G_STYLE[g.id] || null; delete g.plates; }
+// v3.5 robot families: a journey's three bosses are ONE family growing up. Leg 1 = the young form (new small body, lite
+// moves), leg 2 = the grown form (the rival's own body, every move), leg 3 = the giant final form (js/art.js q_*, every
+// move plus the giant's own: it sends out workers and blasts areas). The workers that fly in the legs are the same family.
+export const FAMILY = { moon: 'khurda', mars: 'bubolt', venus: 'zannana', belt: 'magna', jupiter: 'radar', saturn: 'ghummaid', uranus: 'dawwama', neptune: 'sifr' };
+const GIANT_R = { khurda: 62, bubolt: 60, zannana: 52, magna: 60, radar: 58, ghummaid: 56, dawwama: 58, sifr: 60 };
+// how far a giant's body reaches behind its centre and above/below it (so game.js keeps all of it on screen)
+const GIANT_FIT = { khurda: [112, 84], bubolt: [110, 84], zannana: [142, 66], magna: [114, 80], radar: [98, 88], ghummaid: [104, 70], dawwama: [98, 88], sifr: [114, 90] };
+const YOUNG_R = { khurda: 19, bubolt: 18, zannana: 16, magna: 18, radar: 18, ghummaid: 17, dawwama: 18, sifr: 17 };
+// the giant's own area attack: zones (blast circles), ring (a shock ring with one gap), wall (a row of shots with a gap)
+const ROYAL = { khurda: 'zones', bubolt: 'wall', zannana: 'sting', magna: 'ring', radar: 'zones', ghummaid: 'ring', dawwama: 'ring', kabeer: 'zones', sindan: 'ring', sifr: 'all' };
+for (const r of RIVALS) { r.stage = 3; r.royal = ROYAL[r.id] || 'zones'; r.family = GIANT_R[r.id] ? r.id : 'sifr'; if (GIANT_R[r.id]) { r.art = 'q_' + r.id; r.giant = GIANT_R[r.id]; r.fit = GIANT_FIT[r.id]; } }
+// v3.5 difficulty restudy (measured with a test pilot flying every leg at the ship level each journey asks for): boss fights
+// were over in 13-30 s once the ship had its upgrades, long before the boss showed its moves. LEG_K stretches each family's
+// three fights towards ~30 s (young), ~45 s (grown) and ~70 s (giant); game.js also grows boss HP with firepower above
+// POWER[j] (what the journey expects), so extra upgrades shorten a fight a little but never skip it. Duels keep their own HP.
+const LEG_K = { khurda: [1, 1, 0.85], bubolt: [0.7, 0.75, 0.45], zannana: [2.6, 5.2, 4.2], magna: [1.9, 3.3, 2.2], radar: [2.5, 3.3, 2.1], ghummaid: [2.7, 5, 3], dawwama: [1.75, 2.4, 1.4],
+  kabeer: [0, 0, 2.6], sindan: [0, 0, 2], sifr: [0, 0, 2.6] };
+export const POWER = [4, 4, 12.75, 12.75, 20.7, 20.7, 27.3, 27.3];
+for (const r of RIVALS) r.legK = (LEG_K[r.id] || [1, 1, 1])[2];
+const slower = (ph, k) => Object.assign({}, ph, { atk: (ph.atk || []).filter(a => a.k !== 'ram' && a.k !== 'pulse' && a.k !== 'lanes3').map(a => Object.assign({}, a, a.every ? { every: a.every * k } : {}, a.v ? { v: Math.round(a.v * (k > 1.2 ? 0.82 : 0.92)) } : {})) });
+for (const jid in GUARDIANS) {
+  const b = FAMILY[jid], R = RIVALS.find(r => r.id === b), sty = BOSS_STYLE[b][0];
+  GUARDIANS[jid].forEach((g, i) => {
+    delete g.plates; g.style = sty; g.stage = i + 1; g.family = b;
+    // a small body must not hold an offset the ship's bolts cannot reach: the young one weaves, the grown one tracks closer
+    g.move = R.move.mode === 'track' ? (i === 0 ? { mode: 'sine', amp: 90, period: 6 } : Object.assign({}, R.move, { offset: Math.min(R.move.offset || 0, 14) })) : R.move;
+    const lk = (LEG_K[b] || [1, 1, 1])[i]; g.hp = Math.round(g.hp * lk / 10) * 10; g.par = Math.round(g.par * Math.max(1, lk) * 1.3);
+    if (i === 0) { g.art = 'y_' + b; g.s = 1.55; g.r = Math.round(YOUNG_R[b] * 1.55); const p = slower(R.phases[0], 1.4); g.phases = [p, Object.assign({}, p, { at: 0.5 })]; }
+    else { g.art = b; g.s = 1.15; g.r = Math.round(R.r * 1.15); g.phases = R.phases.slice(0, 2).map(ph => slower(ph, 1.15)); }
+  });
+}
+export const family = jid => { const b = FAMILY[jid]; return b ? { base: b, young: 'y_' + b, grown: b, giant: 'q_' + b, youngR: YOUNG_R[b], grownR: (RIVALS.find(r => r.id === b) || {}).r || 34 } : null; };
 export const styleOf = R => !R ? null : R.style || (BOSS_STYLE[R.id] || [])[0] || null;
 export const styleScale = id => (BOSS_STYLE[id] || [])[1] || 1.3;
 export function guardian(id) { for (const k in GUARDIANS) { const g = GUARDIANS[k].find(x => x.id === id); if (g) return g; } return null; }
@@ -426,7 +454,7 @@ export function bossOf(jid, li) {
 //               say {key}  warn {boss}  boss {id, scale, final}
 // FLAV: what each leg introduces (intro kinds) and the set pieces its waves use.
 const FLAV = {
-  moon:    { intro: [['rockS'], ['tank'], ['rockL']], waveA: ['line', 'line', 'wall'], mid: ['scrapRain', 'wall', 'cascade'], waveB: ['line', 'wall', 'line'], twist: ['cascade', 'scrapRain', 'cascade'] },
+  moon:    { intro: [['rockS'], ['tank'], ['rockL']], waveA: ['line', 'squad', 'wall'], mid: ['scrapRain', 'wall', 'cascade'], waveB: ['squad', 'wall', 'squad'], twist: ['cascade', 'scrapRain', 'cascade'] },
   mars:    { intro: [['drone'], ['panel'], ['tank']], waveA: ['squad', 'wall', 'squad'], mid: ['cascade', 'scrapRain', 'tether'], waveB: ['wall', 'squad', 'wall'], twist: ['scrapRain', 'cascade', 'grabber'] },
   venus:   { intro: [['turret'], ['tank'], ['drone']], waveA: ['turrets', 'squad', 'wall'], mid: ['flare', 'tether', 'cascade'], waveB: ['squad', 'turrets', 'squad'], twist: ['grabber', 'flare', 'corridor'] },
   belt:    { intro: [['rockL'], ['crystal'], ['tank']], waveA: ['wall', 'cascade', 'wall'], mid: ['cascade', 'corridor', 'cascade'], waveB: ['squad', 'wall', 'turrets'], twist: ['corridor', 'cascade', 'grabber'] },
@@ -521,7 +549,7 @@ export function legPlan(jid, li, hard = false, seed = null) {
     const newest = ROBOT_ATTACKS[C.attacks - 1];
     if (li === 0) { beats.push({ t: r(0.05), kind: 'wave', form: 'robots', n: 1, teach: newest }); beats.push({ t: r(0.05), kind: 'say', key: 'bot_teach_' + newest }); }
     const slots = [0.18, 0.4, 0.6, 0.75, 0.88].slice(0, Math.min(5, C.waves + li));
-    for (const f of slots) beats.push({ t: r(f), kind: 'wave', form: 'robots', n: C.n + (li >= 2 ? 1 : 0) + (hard ? 1 : 0) });
+    slots.forEach((f, i) => beats.push({ t: r(f), kind: 'wave', form: 'robots', n: C.n + (li >= 2 ? 1 : 0) + (hard ? 1 : 0), elite: li === 0 ? 0 : li === 1 ? (i % 2) : 1 + (j >= 6 && i === slots.length - 1 ? 1 : 0) }));
   }
   // v3.3 supply drones: three per leg carry a weapon capsule (the only source of weapons now)
   for (const f of [0.22, 0.5, 0.8]) beats.push({ t: r(f), kind: 'carrier' });
@@ -570,7 +598,9 @@ export const BOSS_RIG = {
 };
 export const rigOf = id => BOSS_RIG[id] || null;
 // a rigged boss takes longer, so its third star (time) gets more room
-export const parOf = R => R ? Math.round((R.par || 60) * (BOSS_RIG[R.id] ? 1.6 : 1)) : 60;
+// v3.5: in the duel arena the giants carry more HP too (a share of their leg stretch), and the time star follows
+export const duelK = R => R ? clamp((R.legK || 1) * 0.6, 1, 2.5) : 1;
+export const parOf = R => R ? Math.round((R.par || 60) * (BOSS_RIG[R.id] ? 1.6 : 1) * duelK(R)) : 60;
 
 // ---- badges ----
 // tiered: bronze -> silver -> gold, each a bigger goal with a bigger reward (golds land around days 55-75)

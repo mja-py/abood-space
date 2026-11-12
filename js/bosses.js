@@ -45,11 +45,10 @@ function metalChunk(c, x, y, r, rot, seed, flash, hot) { // a scrap chunk in the
   if (hot) { c.globalCompositeOperation = 'lighter'; c.fillStyle = 'rgba(255,90,60,.55)'; c.beginPath(); c.arc(0, 0, r * 0.45, 0, TAU); c.fill(); }
   c.restore();
 }
-function weakMark(c, x, y, r, t, col = '#ffe066') { // the "hit here" marker: a pulsing ring with four ticks
-  const p = 0.5 + 0.5 * Math.sin(t * 8);
-  c.save(); c.globalCompositeOperation = 'lighter'; c.strokeStyle = col; c.globalAlpha = 0.55 + 0.4 * p; c.lineWidth = 3;
-  c.beginPath(); c.arc(x, y, r + 4 + p * 4, 0, TAU); c.stroke();
-  c.lineWidth = 3.5; c.beginPath(); for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + t * 1.5, r0 = r + 10 + p * 4; c.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0); c.lineTo(x + Math.cos(a) * (r0 + 8), y + Math.sin(a) * (r0 + 8)); } c.stroke();
+function weakMark(c, x, y, r, t, col = '#ffe066') { // "hit it now": two small arrows beside the boss, pointing at it (nothing is drawn over the body)
+  const p = 0.5 + 0.5 * Math.sin(t * 7), x0 = x - r - 18 - p * 5;
+  c.save(); c.fillStyle = col; c.strokeStyle = INK; c.lineWidth = 2; c.lineJoin = 'round';
+  for (let k = 0; k < 2; k++) { const xx = x0 - k * 13; c.globalAlpha = k ? 0.55 : 1; c.beginPath(); c.moveTo(xx + 8, y); c.lineTo(xx - 2, y - 8); c.lineTo(xx - 2, y + 8); c.closePath(); c.fill(); c.stroke(); }
   c.restore();
 }
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -78,7 +77,9 @@ function mem() {
 }
 function memSave() { try { localStorage.setItem(MKEY, JSON.stringify(MEM)); } catch (e) { /* private mode: it just forgets */ } }
 export function memory(v) { if (v === null) { MEM = { b: {}, s: {} }; memSave(); } else if (v) { MEM = v; MEM.b = MEM.b || {}; MEM.s = MEM.s || {}; memSave(); } return mem(); }
-const favOf = (B, m) => Object.keys(m.h).filter(k => B.S.moves && B.S.moves[k] && m.h[k] > 0).sort((a, b) => m.h[b] - m.h[a])[0] || null;
+const MV = (B, k) => (k && B.S.moves && (B.S.moves[k] || (B.stage >= 3 && GIANT[k]))) || null;
+const okMove = (B, rv, M) => !!M && !(M.lite === false && B.lite) && !(M.ph && rv.ph < M.ph);
+const favOf = (B, m) => Object.keys(m.h).filter(k => MV(B, k) && m.h[k] > 0).sort((a, b) => m.h[b] - m.h[a])[0] || null;
 
 // ================================================================================================
 // the brain
@@ -95,7 +96,7 @@ function talk(B, key, force) {
   if (!force && (br.sayCd > 0 || (br.said[key] | 0) >= 2)) return false;
   br.said[key] = (br.said[key] | 0) + 1; br.sayCd = 5.5; X.rvSay(key); return true;
 }
-function queue(B, k, why) { const br = B.br; if (!br || !B.S.moves || !B.S.moves[k]) return; br.next = [k, why]; br.rest = Math.min(br.rest, 0.3); }
+function queue(B, k, why) { const br = B.br, M = br && MV(B, k); if (!M || (M.lite === false && B.lite)) return; br.next = [k, why]; br.rest = Math.min(br.rest, 0.3); }
 function sense(B, dt, live, rv) {
   const br = B.br, s = X.ship, S = B.S;
   br.it -= dt; br.sayCd -= dt; br.hitT += dt; br.heatCd -= dt; br.campCd -= dt;
@@ -124,8 +125,9 @@ function sense(B, dt, live, rv) {
 }
 function pick(B, rv) {
   const S = B.S, br = B.br, opts = []; let tot = 0;
-  for (const k in S.moves) {
-    const M = S.moves[k]; if ((M.lite === false && B.lite) || (M.ph && rv.ph < M.ph)) continue;
+  const keys = Object.keys(S.moves); if (B.stage >= 3) keys.push(...Object.keys(GIANT));
+  for (const k of keys) {
+    const M = MV(B, k); if (!okMove(B, rv, M)) continue;
     let w = M.w ? M.w(B, rv, br) : 1; if (!(w > 0)) continue;
     if (k === br.last) w *= 0.2; else if (k === br.last2) w *= 0.6;
     if (k === br.fav) w *= 1.7;
@@ -135,7 +137,7 @@ function pick(B, rv) {
   return opts.length ? opts[0][0] : null;
 }
 function startMove(B, rv, k, why) {
-  const br = B.br, M = k && B.S.moves[k]; if (!M) { br.rest = 1; return false; }
+  const br = B.br, M = MV(B, k); if (!M) { br.rest = 1; return false; }
   br.mv = k; br.mt = 0; br.mT = 0; br.last2 = br.last; br.last = k; icon(B, why || M.icon || 'bang');
   if (k === br.fav && !br.favSaid) { br.favSaid = true; talk(B, 'bq_learn', true); }
   if (M.go) M.go(B, rv, br);
@@ -147,10 +149,10 @@ function restT(B, rv, M) {
   if (B.br.hitT < 1.5) r += 0.9;   // it just hit the player: a breath before the next one
   return r;
 }
-function endMove(B, rv) { const br = B.br, M = br.mv && B.S.moves[br.mv]; if (!M) { br.mv = null; return; } if (M.end) M.end(B, rv, br); br.rest = restT(B, rv, M); br.mv = null; }
+function endMove(B, rv) { const br = B.br, M = MV(B, br.mv); if (!M) { br.mv = null; return; } if (M.end) M.end(B, rv, br); br.rest = restT(B, rv, M); br.mv = null; }
 function runBrain(B, dt, live, rv) {
   const S = B.S, br = B.br; if (!S.moves) return;
-  if (br.mv) { const M = S.moves[br.mv]; br.mt += dt; br.mT += dt; if (!M.step || M.step(B, dt, live, rv, br) || br.mT > (M.max || 16)) endMove(B, rv); return; }
+  if (br.mv) { const M = MV(B, br.mv); br.mt += dt; br.mT += dt; if (!M.step || M.step(B, dt, live, rv, br) || br.mT > (M.max || 16)) endMove(B, rv); return; }
   if (!live || !X.fight()) return;
   br.rest -= dt;
   if (br.rest < 0.4 && br.it <= 0) icon(B, 'dots', 0.45);          // it is thinking
@@ -174,27 +176,29 @@ function kit(B, rv) {
   X.atk(a);
   return a.k === 'laser' ? 1.4 + (a.n || 1) * 0.5 : a.k === 'lanes3' ? 2.2 : 0.8;
 }
-const KIT = { icon: 'aim', w: (B, rv) => ((rv.phase && rv.phase.atk) || []).length ? 1 : 0, go(B, rv, br) { br.dur = kit(B, rv); }, step: (B, dt, live, rv, br) => br.mt > br.dur, rest: 1.2 };
-// the thought bubble over the boss's head
-function drawIcon(B, c, rv) {
-  const br = B.br; if (!br || br.it <= 0 || !br.icon || B.noIcon || X.talking()) return;
-  const f = Math.min(1, (br.i0 - br.it) / 0.12, br.it / 0.15), k = br.icon, t = X.t;
-  c.save(); c.translate(rv.x + rv.r * 0.45, rv.y - rv.r - 22); c.scale(f, f);
-  c.fillStyle = '#fff8ea'; c.strokeStyle = INK; c.lineWidth = 2.2; c.lineCap = 'round'; c.lineJoin = 'round';
-  c.beginPath(); c.arc(-17, 19, 2.4, 0, TAU); c.fill(); c.stroke(); c.beginPath(); c.arc(-12, 13, 3.4, 0, TAU); c.fill(); c.stroke();
-  c.beginPath(); c.roundRect(-16, -16, 32, 28, 10); c.fill(); c.stroke();
-  c.translate(0, -2); c.lineWidth = 2.6;
-  const red = '#e23b4e'; c.strokeStyle = c.fillStyle = INK;
-  if (k === 'dots') { for (let i = 0; i < 3; i++) { c.beginPath(); c.arc(-7 + i * 7, Math.sin(t * 10 - i * 1.1) * 2.5, 2.1, 0, TAU); c.fill(); } }
-  else if (k === 'bang') { c.strokeStyle = c.fillStyle = red; c.lineWidth = 3.4; c.beginPath(); c.moveTo(0, -8); c.lineTo(0, 1); c.stroke(); c.beginPath(); c.arc(0, 7, 2.2, 0, TAU); c.fill(); }
-  else if (k === 'q') { c.beginPath(); c.arc(0, -4, 4.6, Math.PI * 1.05, Math.PI * 0.5); c.lineTo(0, 2.5); c.stroke(); c.beginPath(); c.arc(0, 7.5, 2, 0, TAU); c.fill(); }
-  else if (k === 'eye') { c.beginPath(); c.moveTo(-10, 0); c.quadraticCurveTo(0, -9, 10, 0); c.quadraticCurveTo(0, 9, -10, 0); c.closePath(); c.stroke(); c.fillStyle = red; c.beginPath(); c.arc(-1.5 + Math.sin(t * 5) * 1.5, 0, 3, 0, TAU); c.fill(); }
-  else if (k === 'aim') { c.strokeStyle = red; c.beginPath(); c.arc(0, 0, 6.5, 0, TAU); c.moveTo(-10, 0); c.lineTo(-4, 0); c.moveTo(4, 0); c.lineTo(10, 0); c.moveTo(0, -10); c.lineTo(0, -4); c.moveTo(0, 4); c.lineTo(0, 10); c.stroke(); }
-  else if (k === 'guard') { c.fillStyle = '#7fd4ff'; c.beginPath(); c.moveTo(-7.5, -8); c.lineTo(7.5, -8); c.lineTo(7.5, -1); c.quadraticCurveTo(7, 6, 0, 9.5); c.quadraticCurveTo(-7, 6, -7.5, -1); c.closePath(); c.fill(); c.stroke(); }
-  else if (k === 'grin') { c.beginPath(); c.arc(0, -1, 7, Math.PI * 0.12, Math.PI * 0.88); c.stroke(); c.beginPath(); c.arc(-4.5, -4.5, 1.7, 0, TAU); c.arc(4.5, -4.5, 1.7, 0, TAU); c.fill(); }
-  else if (k === 'dizzy') { c.beginPath(); for (let i = 0; i <= 26; i++) { const a = i * 0.5 + t * 6, r = i * 0.34; i ? c.lineTo(Math.cos(a) * r, Math.sin(a) * r) : c.moveTo(0, 0); } c.stroke(); }
-  c.restore();
+const KIT = { icon: 'aim', lite: false, w: (B, rv) => ((rv.phase && rv.phase.atk) || []).length ? 1 : 0, go(B, rv, br) { br.dur = kit(B, rv); }, step: (B, dt, live, rv, br) => br.mt > br.dur, rest: 1.2 };
+// ================================================================================================
+// v3.5 the giant final forms share two moves of their own on top of the family's: they send out workers of the family, and
+// they blast areas (which kind is the family's: meta.js ROYAL).
+function royal(B, rv) {
+  const k0 = (rv.R && rv.R.royal) || 'zones', k = k0 === 'all' ? ['zones', 'ring', 'wall'][Math.floor(Math.random() * 3)] : k0, s = X.ship, fx = rv.x - rv.r * 0.7;
+  X.shake(5); talk(B, 'bq_royal');
+  if (k === 'ring') { X.gapRing(fx, rv.y); if (rv.ph >= 2) X.later(1.2, () => X.gapRing(fx, rv.y)); return 2.2; }
+  if (k === 'wall') { X.atk({ k: 'wall', v: 170, gap: 100 }); if (rv.ph >= 1) X.later(1.4, () => X.atk({ k: 'wall', v: 170, gap: 100 })); return 2.5; }
+  if (k === 'sting') { // a fan of darts that leaves the ship's own lane open, then one dart down that lane
+    for (let i = 0; i < 7; i++) { if (i === 3) continue; X.shot('dart', fx, rv.y, X.aim(fx, rv.y) + (i - 3) * 0.17, 290); }
+    X.sfx('eshot'); X.later(X.tele(0.75), () => { X.shot('dart', fx, rv.y, lead(fx, rv.y, 320), 320); X.sfx('eshot'); }); return 1.5;
+  }
+  const n = 3 + Math.min(2, rv.ph), w = X.tele(1.2);
+  X.zone(s.x, s.y, 54, w); for (let i = 1; i < n; i++) { const a = rnd(0, TAU), d = rnd(70, 150); X.zone(s.x + Math.cos(a) * d, s.y + Math.sin(a) * d, 50, w + i * 0.14); }
+  X.sfx('mine'); return 2;
 }
+const GIANT = {
+  brood: { w: (B, rv) => X.kin() < 2 ? 1.6 : X.kin() < 4 ? 0.5 : 0,   // the hatch opens and the family's workers fly out
+    go(B, rv, br) { br.k = 0; br.t2 = 0.6; X.sfx('plate'); talk(B, 'bq_brood'); },
+    step(B, dt, live, rv, br) { br.t2 -= dt; if (br.t2 <= 0) { br.k++; br.t2 = 0.6; X.brood(rv.x + (rv.ha ? rv.ha[0] : 0), rv.y + (rv.ha ? rv.ha[1] : 0)); } return br.k >= (rv.ph >= 1 ? 3 : 2); }, rest: 1.7 },
+  royal: { w: (B, rv) => rv.ph >= 1 ? 1.5 : 1, go(B, rv, br) { br.dur = royal(B, rv); }, step: (B, dt, live, rv, br) => br.mt > br.dur, rest: 1.5 },
+};
 
 // ================================================================================================
 // Moon · Khurda, the scrap clam. Bolts bounce off the shut shell; the glowing core inside is the target. It no longer opens on
@@ -238,7 +242,7 @@ const clam = {
         B.gotHit = false; return false;
       },
       end(B) { B.want = 0; }, rest: 1.2 },
-    roll: { icon: 'bang', w: () => 1.2,   // shuts tight, lines up on the ship and rolls down its lane; it comes back dizzy and wide open
+    roll: { icon: 'bang', lite: false, w: () => 1.2,   // shuts tight, lines up on the ship and rolls down its lane; it comes back dizzy and wide open
       go(B, rv, br) { B.want = 0; br.k = 0; br.tl = X.tele(B.lite ? 1.2 : 0.95); rv.dodge = { y: clamp(X.ship.y, rv.ymin, rv.ymax), t: br.tl }; B.lane = 1; X.sfx('laserWarn'); },
       step(B, dt, live, rv, br) {
         if (br.k === 0) { if (br.mt >= br.tl) { br.k = 1; B.ownMove = true; rv.dodge = null; X.sfx('whoosh'); } }
@@ -259,25 +263,28 @@ const clam = {
   heat(B, rv, br) { if (X.harmless()) return null; if (br.mv === 'spit') br.mt = 99; return br.last === 'roll' ? 'shy' : 'roll'; },
   draw(B, c, layer, rv) {
     if (layer !== 'over') return;
-    const R = rv.r * 1.3, hx = rv.x + rv.r * 0.75, hy = rv.y, a = B.o * 0.95, t = X.t;
-    if (B.open) weakMark(c, rv.x, rv.y, rv.r * 0.75, t);
+    // v3.5: no shell over the body any more. The robot holds two blast doors in front of it: shut = bolts bounce off,
+    // and they slide apart (up and down) when it opens. The body's art stays in full view.
+    const t = X.t, h = rv.r * 0.98, w = Math.max(11, rv.r * 0.3), px = rv.x - rv.r * 1.12, gap = B.o * h * 0.86, hit = rv.hurt > 0.6 && !B.open;
+    if (B.open) weakMark(c, rv.x, rv.y, rv.r * 1.12 + w, t);
+    c.save(); c.lineJoin = 'round';
     for (const sd of [-1, 1]) {
-      c.save(); c.translate(hx, hy); c.rotate(-sd * a); c.translate(-hx, -hy);
-      // a domed half shell: hinge on the right, a toothed lip on the left
-      c.beginPath(); c.moveTo(rv.x + R * 0.62, rv.y);
-      c.arc(rv.x, rv.y, R, sd < 0 ? -0.0 : 0, sd < 0 ? -Math.PI : Math.PI, sd < 0);
-      const lip = rv.x - R; for (let k = 0; k <= 6; k++) { const x = lip + (R * 1.62) * k / 6; c.lineTo(x, rv.y + sd * (k % 2 ? 0 : 7)); }
-      c.closePath();
-      c.fillStyle = rv.hurt > 0.6 && !B.open ? '#d9dce6' : '#8d94a8'; c.fill(); c.strokeStyle = INK; c.lineWidth = 3; c.stroke();
-      c.save(); c.clip(); // bands and a hazard stripe on the dome
-      c.fillStyle = 'rgba(28,21,48,.18)'; c.beginPath(); c.arc(rv.x + 6, rv.y + sd * 6, R * 0.82, 0, TAU); c.fill();
-      c.fillStyle = '#ffd23f'; c.fillRect(rv.x - R, rv.y + sd * R * 0.62 - 4, R * 2, 8);
-      c.fillStyle = INK; for (let k = -6; k < 7; k++) { c.beginPath(); const x = rv.x + k * 12; c.moveTo(x, rv.y + sd * R * 0.62 - 4); c.lineTo(x + 6, rv.y + sd * R * 0.62 - 4); c.lineTo(x, rv.y + sd * R * 0.62 + 4); c.lineTo(x - 6, rv.y + sd * R * 0.62 + 4); c.closePath(); c.fill(); }
+      const y0 = rv.y + sd * gap, y1 = y0 + sd * h, top = Math.min(y0, y1);
+      // the rail arm that carries the door
+      c.strokeStyle = INK; c.lineWidth = 6; c.beginPath(); c.moveTo(rv.x - rv.r * 0.55, rv.y + sd * rv.r * 0.5); c.lineTo(px + w * 0.5, y0 + sd * h * 0.55); c.stroke();
+      c.strokeStyle = '#7d879e'; c.lineWidth = 3; c.stroke();
+      c.fillStyle = hit ? '#eef0f6' : '#9aa3b8'; c.strokeStyle = INK; c.lineWidth = 2.6;
+      c.beginPath(); c.roundRect(px - w * 0.5, top, w, h, 5); c.fill(); c.stroke();
+      c.fillStyle = 'rgba(255,255,255,.4)'; c.fillRect(px - w * 0.5 + 2.5, top + 4, 2.5, h - 8);
+      c.fillStyle = 'rgba(28,21,48,.2)'; c.fillRect(px + w * 0.5 - 4.5, top + 3, 3, h - 6);
+      // hazard lip where the two doors meet
+      c.save(); c.beginPath(); c.rect(px - w * 0.5 + 1.3, sd < 0 ? y0 - 9 : y0 + 1.3, w - 2.6, 7.7); c.clip();
+      c.fillStyle = '#ffd23f'; c.fillRect(px - w, y0 - 12, w * 2, 24); c.fillStyle = INK;
+      for (let k = -2; k < 4; k++) { const x = px - w * 0.5 + k * 7; c.beginPath(); c.moveTo(x, y0 + 12); c.lineTo(x + 7, y0 - 12); c.lineTo(x + 10.5, y0 - 12); c.lineTo(x + 3.5, y0 + 12); c.closePath(); c.fill(); }
       c.restore();
-      c.fillStyle = '#c7cedb'; for (let k = 1; k < 6; k++) { const an = sd * (k / 6) * Math.PI; c.beginPath(); c.arc(rv.x + Math.cos(an) * R * 0.86, rv.y + Math.sin(an) * R * 0.86, 2.2, 0, TAU); c.fill(); }
-      c.restore();
+      c.fillStyle = '#e6e9f0'; for (const f of [0.3, 0.62, 0.9]) { c.beginPath(); c.arc(px, y0 + sd * h * f, 1.7, 0, TAU); c.fill(); }
     }
-    c.fillStyle = '#4a4f63'; c.strokeStyle = INK; c.lineWidth = 2.5; c.beginPath(); c.arc(hx, hy, 9, 0, TAU); c.fill(); c.stroke();
+    c.restore();
   },
   draw2(B, c, layer, rv) { if (layer === 'under' && B.lane) laneTell(c, rv.y, rv.x - rv.r, X.t, rv.r * 0.85); },
 };
@@ -337,7 +344,7 @@ const bubble = {
         bubble.add(B, rv.x - rv.r - 16, rv.y, 0, Math.cos(a) * v, Math.sin(a) * v); X.sfx('pop');
         return --br.k <= 0;
       }, rest: 1.8 },
-    inhale: { icon: 'eye',   // bubbles the player let past come back from behind, then burst out again
+    inhale: { icon: 'eye', lite: false,   // bubbles the player let past come back from behind, then burst out again
       w(B) { let n = 0; for (const o of B.tg) if (o.x < X.ship.x + 60) n++; return n >= 2 || B.tg.length >= 7 ? 2.6 : 0; },
       go(B) { B.suck = 1.5; X.sfx('whoosh'); talk(B, 'bq_suck'); },
       step(B, dt, live, rv) {
@@ -399,8 +406,11 @@ const bubble = {
 // Venus · Zannana, the hornet. Perched it is easy to hit (×1.5), so it does not sit still for it: it jinks out of the lane when
 // it is being hit, loops through the spot the ship is in (and may re-aim at the last moment), stabs straight down the ship's
 // lane and comes back tired, or strafes past firing darts at where the ship is and where it is going.
+// a giant only hurts with its head (its long body flies past), and it warns for longer before it dives
+const big = rv => !!(rv.R && rv.R.giant);
 const hornet = {
   hint: 'hornet',
+  tr: rv => big(rv) ? 30 : rv.r * 0.8,
   init(B) { B.mode = 'perch'; B.ownMove = true; B.trail = []; B.mul = 1.5; B.jink = null; B.ly = 200; },
   plan(B, rv) { // an oval loop whose far turn is aimed at the ship (ahead of a moving ship from the second phase)
     const home = X.home(), s = X.ship, ld = rv.ph >= 1 && !B.lite ? 0.35 : 0;
@@ -418,7 +428,7 @@ const hornet = {
   },
   moves: {
     swoop: { icon: 'bang', w: () => 2,
-      go(B, rv) { B.loops = !B.lite && rv.ph >= 2 ? 2 : 1; hornet.tele(B, rv, B.lite ? 1.2 : 0.9); },
+      go(B, rv) { B.loops = !B.lite && rv.ph >= 2 ? 2 : 1; hornet.tele(B, rv, B.lite ? 1.2 : big(rv) ? 1.3 : 0.9); },
       step(B, dt, live, rv) {
         if (B.mode === 'tele') {
           B.mul = 1.5; rv.x += Math.sin(B.t * 40) * 0.6; B.mt -= dt;
@@ -430,13 +440,13 @@ const hornet = {
         const [x, y] = hornet.pos(B, Math.min(1, B.f)); rv.x = x; rv.y = y;
         B.trail.push([x, y]); if (B.trail.length > 6) B.trail.shift();
         if (!B.lite && B.drop < 2 && B.f > (B.drop + 1) / 3.2) { B.drop++; X.mob('mine', x, y, { v: 70, turn: 0.9, life: 4.5, hp: hp1(2) }); }
-        if (live && X.touch(x, y, rv.r * 0.8)) X.hurt();
-        if (B.f >= 1) { if (--B.loops > 0) hornet.tele(B, rv, 0.6); else return true; }
+        if (live && X.touch(x, y, hornet.tr(rv))) X.hurt();
+        if (B.f >= 1) { if (--B.loops > 0) hornet.tele(B, rv, big(rv) ? 0.95 : 0.6); else return true; }
         return false;
       },
       end(B) { B.mode = 'perch'; B.trail.length = 0; B.fake = false; }, rest: (B, rv) => B.lite ? 2.4 : rv.ph >= 1 ? 1.5 : 2 },
-    dart: { icon: 'aim', w: B => B.lite ? 0.8 : 1.6,   // draws back, follows the ship's lane, commits, stabs: then limps home tired (×2)
-      go(B, rv, br) { B.mode = 'aimdart'; br.tl = X.tele(B.lite ? 1.15 : 0.85); B.ly = rv.y; B.hitD = false; X.sfx('laserWarn'); },
+    dart: { icon: 'aim', lite: false, w: B => B.lite ? 0.8 : 1.6,   // draws back, follows the ship's lane, commits, stabs: then limps home tired (×2)
+      go(B, rv, br) { B.mode = 'aimdart'; br.tl = X.tele(B.lite ? 1.15 : big(rv) ? 1.2 : 0.85); B.ly = rv.y; B.hitD = false; X.sfx('laserWarn'); },
       step(B, dt, live, rv, br) {
         const home = X.home();
         if (B.mode === 'aimdart') {
@@ -446,7 +456,7 @@ const hornet = {
           if (br.mt >= br.tl) { B.mode = 'dart'; X.sfx('whoosh'); }
         } else if (B.mode === 'dart') {
           B.mul = 1; rv.x -= (B.lite ? 620 : 860) * dt; rv.y = B.ly; B.trail.push([rv.x, rv.y]); if (B.trail.length > 6) B.trail.shift();
-          if (live && !B.hitD && X.touch(rv.x, rv.y, rv.r * 0.8)) { B.hitD = true; X.hurt(); }
+          if (live && !B.hitD && X.touch(rv.x, rv.y, hornet.tr(rv))) { B.hitD = true; X.hurt(); }
           if (rv.x < 46) { B.mode = 'stuck'; br.t2 = B.lite ? 1 : 0.6; X.shake(4); X.sfx('tank'); X.sparks(rv.x - rv.r, rv.y, 10, '#ffcf6a', 180); }
         } else if (B.mode === 'stuck') { br.t2 -= dt; rv.x = 46 + Math.sin(B.t * 50) * 1.5; if (B.trail.length) B.trail.shift(); if (br.t2 <= 0) { B.mode = 'limp'; icon(B, 'dizzy', 1.6); } }
         else { B.mul = 2; rv.x += Math.min((home - rv.x) * dt * 1.6 + 60 * dt, home - rv.x); rv.y += Math.sin(B.t * 9) * 0.8; if (home - rv.x < 6) return true; }
@@ -565,7 +575,7 @@ const magnet = {
         return false;
       },
       end(B) { B.pol = 'pull'; }, rest: 1.8 },
-    tug: { icon: 'eye', w: B => B.lite ? 0.5 : 1.2,   // scrap dragged in from behind the player
+    tug: { icon: 'eye', lite: false, w: B => B.lite ? 0.5 : 1.2,   // scrap dragged in from behind the player
       go(B, rv, br) {
         const n = B.lite ? 2 : rv.ph >= 1 ? 5 : 3, s = X.ship;
         for (let i = 0; i < n; i++) B.warn.push({ y: clamp(s.y + (i - (n - 1) / 2) * 48 + rnd(-10, 10), X.Y_MIN + 6, X.Y_MAX - 6), t: X.tele(0.85) + i * 0.28, t0: X.tele(0.85) + i * 0.28 });
@@ -599,15 +609,11 @@ const magnet = {
       c.setLineDash([]); c.restore();
       return;
     }
-    // the horseshoe on its back: the tips swap colour with the polarity
-    c.save(); c.translate(rv.x + rv.r * 0.55, rv.y); c.lineCap = 'butt';
-    c.strokeStyle = INK; c.lineWidth = 17; c.beginPath(); c.arc(0, 0, rv.r * 0.95, -Math.PI * 0.5, Math.PI * 0.5); c.stroke();
-    c.strokeStyle = '#8d94a8'; c.lineWidth = 11; c.beginPath(); c.arc(0, 0, rv.r * 0.95, -Math.PI * 0.42, Math.PI * 0.42); c.stroke();
-    for (const s of [-1, 1]) { c.fillStyle = (s < 0) === red ? '#ff5a6a' : '#5ec8ff'; c.strokeStyle = INK; c.lineWidth = 2.5; c.beginPath(); c.roundRect(-12, s * rv.r * 0.95 - 7, 14, 14, 3); c.fill(); c.stroke(); }
-    c.restore();
+    // v3.5: the body IS the magnet now (no second horseshoe drawn over it): two small pole lamps on its tips swap colour with the polarity
+    for (const sd of [-1, 1]) { c.fillStyle = (sd < 0) === red ? '#ff5a6a' : '#5ec8ff'; c.strokeStyle = INK; c.lineWidth = 2; c.beginPath(); c.roundRect(rv.x - rv.r * 0.98, rv.y + sd * rv.r * 0.62 - 4.5, 9, 9, 2.5); c.fill(); c.stroke(); }
     for (const o of B.tg) metalChunk(c, o.x, o.y, o.r, o.rot, o.seed, o.flash, B.pol === 'charge');
     for (const o of B.fly) metalChunk(c, o.x, o.y, o.r, o.rot, o.seed, o.flash, true);
-    if (B.pol === 'charge') { c.save(); c.globalCompositeOperation = 'lighter'; c.strokeStyle = `rgba(255,90,106,${0.4 + 0.4 * Math.sin(t * 30)})`; c.lineWidth = 3; c.beginPath(); c.arc(rv.x, rv.y, rv.r + 34, 0, TAU); c.stroke(); c.restore(); }
+    // (no ring round the body while it charges: the chunks themselves glow hot)
   },
   draw2(B, c, layer) {
     const t = X.t;
@@ -906,7 +912,7 @@ const hide = {
 const vortex = {
   hint: 'vortex',
   ringMk(B, R, n, gaps, w) { const segs = []; for (let i = 0; i < n; i++) segs.push({ i, on: !gaps.includes(i), hp: hp1(B.lite ? 3 : 5), back: 0, flash: 0, x: 0, y: 0, r: 0, dead: false, away: false, hot: false }); return { R, n, w, a: rnd(0, TAU), segs }; },
-  init(B, rv) { B.rings = [vortex.ringMk(B, rv.r + 30, 14, B.lite ? [0, 4, 7, 11] : [0, 7], B.lite ? 0.7 : 1)]; B.discs = []; B.guard = 0; B.fast = 0; B.pull = 0; },
+  init(B, rv) { B.far = rv.R && rv.R.giant ? 34 : 0; B.rings = [vortex.ringMk(B, rv.r + 30 + B.far, 14, B.lite ? [0, 4, 7, 11] : [0, 7], B.lite ? 0.7 : 1)]; B.discs = []; B.guard = 0; B.fast = 0; B.pull = 0; },
   face(B, g, rv) { // the ring angle that puts the middle of its longest unbroken run of plates between the core and the ship
     const n = g.n, th = Math.atan2(X.ship.y - rv.y, X.ship.x - rv.x); let best = 0, bi = 0, run = 0;
     for (let i = 0; i < n * 2; i++) { if (g.segs[i % n].on) { run++; if (run > best && run <= n) { best = run; bi = i; } } else run = 0; }
@@ -945,7 +951,7 @@ const vortex = {
         for (let i = 0; i < n; i++) X.later(0.35 + i * 0.16, () => { for (let q = 0; q < arms; q++) X.shot('pellet', rv.x - rv.r * 0.5, rv.y, Math.PI - dir * (0.9 - i * 1.8 / n) + q * 0.55 * dir, 200); X.sfx('eshot'); });
       },
       step: (B, dt, live, rv, br) => br.mt > 2.5, end(B) { B.fast = 0; }, rest: 1.6 },
-    throw: { icon: 'aim', w: B => B.rings[0] && B.rings[0].segs.filter(s => s.on).length >= 4 ? 1.5 : 0,
+    throw: { icon: 'aim', lite: false, w: B => B.rings[0] && B.rings[0].segs.filter(s => s.on).length >= 4 ? 1.5 : 0,
       go(B, rv, br) {
         const g = B.rings[0], th = Math.atan2(X.ship.y - rv.y, X.ship.x - rv.x), off = s => Math.abs(wrap(g.a + (s.i + 0.5) * TAU / g.n - th));
         br.pl = g.segs.filter(s => s.on).sort((a, b) => off(a) - off(b)).slice(0, B.lite ? 1 : rv.ph >= 1 ? 3 : 2);
@@ -976,7 +982,7 @@ const vortex = {
   },
   camp: (B, rv, br) => br.last !== 'throw' ? 'throw' : B.lite ? 'vent' : 'suck',
   heat: B => B.guard > 0 ? null : 'guard',
-  shift(B, rv) { if (rv.ph === 1 && !B.lite && B.rings.length < 2) B.rings.push(vortex.ringMk(B, rv.r + 56, 18, [0, 6, 12], -0.75)); },
+  shift(B, rv) { if (rv.ph === 1 && !B.lite && B.rings.length < 2) B.rings.push(vortex.ringMk(B, rv.r + 56 + (B.far || 0), 18, [0, 6, 12], -0.75)); },
   targets(B) { const o = []; for (const g of B.rings) for (const s of g.segs) if (s.on) o.push(s); return o.concat(B.discs); },
   hit(B, s, d) {
     s.hp -= d; s.flash = 1;
@@ -987,23 +993,27 @@ const vortex = {
   fixed(B) { B.rings = []; B.discs = []; B.pull = 0; },
   draw(B, c, layer, rv) {
     const t = X.t;
-    if (layer === 'under') { // the current: faint swirling arcs
+    if (layer === 'under') { // the current: faint swirling arcs, only while it is pulling the ship in
+      if (!(B.pull > 0)) return;
       c.save(); c.globalCompositeOperation = 'lighter'; c.lineCap = 'round';
-      for (let k = 0; k < 7; k++) { const r = rv.r + 70 + k * 34, a = -t * (1.2 - k * 0.1) + k; c.strokeStyle = `rgba(185,166,255,${0.13 - k * 0.012})`; c.lineWidth = 3; c.beginPath(); c.arc(rv.x, rv.y, r, a, a + 1.6); c.stroke(); c.beginPath(); c.arc(rv.x, rv.y, r, a + Math.PI, a + Math.PI + 1.2); c.stroke(); }
+      for (let k = 0; k < 5; k++) { const r = rv.r + 110 + k * 40, a = -t * (1.2 - k * 0.1) + k; c.strokeStyle = `rgba(185,166,255,${0.12 - k * 0.014})`; c.lineWidth = 3; c.beginPath(); c.arc(rv.x, rv.y, r, a, a + 1.2); c.stroke(); }
       c.restore();
       return;
     }
+    // v3.5: the armour is separate plates flying round the body (no ring drawn across the art); a missing plate is just a gap
     for (const g of B.rings) {
-      const step = TAU / g.n;
-      c.save(); c.lineCap = 'butt';
+      const step = TAU / g.n, len = g.R * step * 0.84, th = 13;
       for (const s of g.segs) {
-        const a0 = g.a + s.i * step + 0.03, a1 = a0 + step - 0.06;
-        if (!s.on) { c.strokeStyle = 'rgba(185,166,255,.18)'; c.lineWidth = 3; c.beginPath(); c.arc(rv.x, rv.y, g.R, a0, a1); c.stroke(); continue; }
-        c.strokeStyle = INK; c.lineWidth = 16; c.beginPath(); c.arc(rv.x, rv.y, g.R, a0, a1); c.stroke();
-        c.strokeStyle = s.flash > 0.4 ? '#ffffff' : '#7f74b8'; c.lineWidth = 11; c.beginPath(); c.arc(rv.x, rv.y, g.R, a0 + 0.02, a1 - 0.02); c.stroke();
-        c.strokeStyle = 'rgba(255,255,255,.45)'; c.lineWidth = 2; c.beginPath(); c.arc(rv.x, rv.y, g.R - 3, a0 + 0.05, a1 - 0.05); c.stroke();
+        if (!s.on) continue;
+        const a = g.a + (s.i + 0.5) * step;
+        c.save(); c.translate(rv.x + Math.cos(a) * g.R, rv.y + Math.sin(a) * g.R); c.rotate(a + Math.PI / 2);
+        c.fillStyle = s.flash > 0.4 ? '#ffffff' : '#8f86c9'; c.strokeStyle = INK; c.lineWidth = 2.4; c.lineJoin = 'round';
+        c.beginPath(); c.moveTo(-len / 2, th / 2); c.lineTo(-len / 2 + 3, -th / 2); c.lineTo(len / 2 - 3, -th / 2); c.lineTo(len / 2, th / 2); c.closePath(); c.fill(); c.stroke();
+        c.fillStyle = 'rgba(255,255,255,.4)'; c.fillRect(-len / 2 + 4, -th / 2 + 2.2, len - 8, 2.2);
+        c.fillStyle = 'rgba(28,21,48,.22)'; c.fillRect(-len / 2 + 2, th / 2 - 4, len - 4, 2.6);
+        c.fillStyle = '#e6e0ff'; c.beginPath(); c.arc(-len / 2 + 6, 1, 1.5, 0, TAU); c.arc(len / 2 - 6, 1, 1.5, 0, TAU); c.fill();
+        c.restore();
       }
-      c.restore();
     }
   },
   draw2(B, c, layer, rv) {
@@ -1298,17 +1308,17 @@ function adaptSeq(seq) {
   for (const k of seq) if (pool.length < 3 && !pool.includes(k)) pool.push(k);
   return { seq: pool.reverse(), studied: true };
 }
-const KEEP = ['name', 'S', 'seq', 'lite', 't', 'br', 'studied'];
+const KEEP = ['name', 'S', 'seq', 'lite', 'stage', 't', 'br', 'studied'];   // (a style's own fields, like the vortex's B.far, are rebuilt by its init)
 const FRESH = S => ({ tg: [], ownMove: false, quiet: true, mul: 1, open: true, atkK: 1, hint: S.hint, noIcon: false });   // quiet: nothing fires on a timer, the brain calls every shot
-export function make(style, rv, lite) {
+export function make(style, rv, lite, stage = lite ? 1 : 2) {
   const ad = Array.isArray(style) ? adaptSeq(style) : null, seq = ad ? ad.seq : null, name = seq ? seq[0] : style, S = STYLES[name];
   if (!S) return null;
-  const B = Object.assign({ name, S, seq, lite: !!lite, t: 0, br: null, studied: !!(ad && ad.studied) }, FRESH(S));
+  const B = Object.assign({ name, S, seq, lite: !!lite, stage, t: 0, br: null, studied: !!(ad && ad.studied) }, FRESH(S));
   S.init(B, rv); return B;
 }
 function abortMove(B, rv) {
   const br = B.br; if (!br) return;
-  if (br.mv) { const M = B.S.moves && B.S.moves[br.mv]; if (M && M.end) M.end(B, rv, br); br.mv = null; }
+  if (br.mv) { const M = MV(B, br.mv); if (M && M.end) M.end(B, rv, br); br.mv = null; }
   br.next = null;
 }
 function swap(B, rv, name) { // Zero switches signature with each phase
@@ -1320,7 +1330,7 @@ function swap(B, rv, name) { // Zero switches signature with each phase
   if (B.br) { B.br.fav = favOf(B, B.br.m); B.br.favSaid = false; B.br.last = B.br.last2 = null; }
 }
 // how far the style reaches above/below (and right of) the core, so game.js keeps it on screen
-const EXT = { clam: r => r * 1.3, magnet: r => r + 48, vortex: (r, B) => B.lite ? r + 38 : r + 64, builder: r => r + 45 };
+const EXT = { clam: r => r * 1.3, magnet: r => r + 48, vortex: (r, B) => B.lite ? r + 38 : r + 64 + (B.far || 0), builder: r => r + 45 };
 export function ext(B, rv) { const f = EXT[B.name]; return f ? f(rv.r, B) : rv.r; }
 export function update(B, dt, live, rv) {
   B.t += dt; for (const o of B.tg || []) if (o.flash) o.flash = Math.max(0, o.flash - dt * 6);
@@ -1374,12 +1384,12 @@ export function fixed(B, rv) {
   B.open = true; B.quiet = true; B.ownMove = B.S === hornet || B.S === hide; rv.aimY = null;
   if (B.br && !B.won) { B.won = true; B.br.m.w++; memSave(); }
 }
-export function draw(B, c, layer, rv) { B.S.draw(B, c, layer, rv); if (B.S.draw2) B.S.draw2(B, c, layer, rv); if (layer === 'over') drawIcon(B, c, rv); }
+export function draw(B, c, layer, rv) { B.S.draw(B, c, layer, rv); if (B.S.draw2) B.S.draw2(B, c, layer, rv); }
 // for tests and the console: what the brain sees and plans; force a move
 export function peek(B, rv) {
   const br = B.br; if (!br) return { style: B.name, mv: null };
   const r2 = v => Math.round(v * 100) / 100;
   return { style: B.name, mv: br.mv, last: br.last, next: br.next && br.next[0], rest: r2(br.rest), camp: r2(br.camp), heat: Math.round(br.heat * 1000) / 1000, band: br.band.map(r2),
-    icon: br.it > 0 ? br.icon : null, fav: br.fav, hitN: br.hitN, moves: Object.keys(B.S.moves || {}), mode: B.mode || B.pol || B.st || null, open: B.open, mul: r2(B.mul), ownMove: B.ownMove, seq: B.seq, studied: B.studied };
+    icon: br.it > 0 ? br.icon : null, fav: br.fav, hitN: br.hitN, moves: Object.keys(B.S.moves || {}).concat(B.stage >= 3 ? Object.keys(GIANT) : []).filter(k => okMove(B, rv, MV(B, k))), stage: B.stage, mode: B.mode || B.pol || B.st || null, open: B.open, mul: r2(B.mul), ownMove: B.ownMove, seq: B.seq, studied: B.studied };
 }
-export function force(B, rv, k) { if (!B.br || !B.S.moves || !B.S.moves[k]) return false; abortMove(B, rv); return startMove(B, rv, k); }
+export function force(B, rv, k) { if (!B.br || !MV(B, k)) return false; abortMove(B, rv); return startMove(B, rv, k); }
