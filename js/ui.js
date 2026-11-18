@@ -54,6 +54,12 @@ const IC = {
   bot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4.5M9.5 13v.6M14.5 13v.6M9.5 16.2h5"/>',
   arrow: '<path d="M5 12h13M13 6.5l5.5 5.5-5.5 5.5"/>', up: '<path d="M6 15l6-6 6 6"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  // v3.6 costume powers
+  pw_dash: '<path d="M4 12h8M8 7l5 5-5 5M14 6l5.5 6-5.5 6"/>', pw_pulse: '<circle cx="12" cy="12" r="2.6"/><circle cx="12" cy="12" r="8"/>',
+  pw_magnet: '<path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z"/><path d="M6 8h4M14 8h4"/>', pw_slow: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.2 2"/>',
+  pw_nova: '<circle cx="12" cy="12" r="2.8"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/>',
+  pw_over: '<path d="M13 3L6 13.5h5L10 21l8-11.5h-5.5z"/>', pw_repair: '<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/>',
+  pw_shards: '<path d="M12 3l6 9-6 9-6-9z"/><path d="M6 12h12"/>',
 };
 const svgI = (name, cls = '') => '<svg class="si' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (IC[name] || '') + '</svg>';
 const icon = (name, cls) => { const s = document.createElement('span'); s.className = 'sic'; s.innerHTML = svgI(name, cls); return s.firstChild; };
@@ -813,12 +819,12 @@ function drItems(step, group, ch) {
   const all = COSTUMES(), fits = id => { const f = MM('costumeFits', id, ch); return f == null ? true : !!f; };
   if (step === 'pilot') return (M.CHARS || ['abood', 'mozah']).map(id => {
     const locked = id === 'mozah' && MM('girlOpen') === false, need = M.GIRL_MISSIONS || 10, have = Math.min(MM('missionsDone') || 0, need);
-    return { id, name: T('ch_' + id), on: id === ch, locked, why: locked ? T('ch_lock', have, need) : '', prog: locked ? have / need : null,
+    return { id, name: T('ch_' + id), on: id === ch, locked, fx: T('ch_' + id + '_talent'), ic: 'star', why: locked ? T('ch_lock', have, need) : '', prog: locked ? have / need : null,
       act: id === ch ? null : locked ? null : { text: T('ch_pick'), go: () => pickChar(id) } };
   });
   if (step === 'suit' && group === 'color') {
     const worn = costumeOf(ch);
-    return all.filter(c => (c.kind ? c.kind === 'color' : !c.perk && !c.price) && fits(c.id)).map(C => ({ id: C.id, name: T('cs_' + C.id), sub: T('free'), on: C.id === worn,
+    return all.filter(c => (c.kind ? c.kind === 'color' : !c.perk && !c.price) && fits(c.id)).map(C => ({ id: C.id, name: T('cs_' + C.id), sub: T('free'), fx: T('pw_' + (C.power || 'dash')) + ': ' + T('pwd_' + (C.power || 'dash')), ic: 'pw_' + (C.power || 'dash'), on: C.id === worn,
       act: C.id === worn ? null : { text: T('wear'), go: () => drWear(C.id, ch) } }));
   }
   if (step === 'suit') return all.filter(c => (c.kind ? c.kind === 'perk' : !!c.perk)).map(C => {
@@ -833,14 +839,14 @@ function drItems(step, group, ch) {
       openSheet('costumes');
     } };
     const warn = (st.warn ?? (C.id === 'link' && M.level('nabeeh') < 1)) ? T('cs_linkNote') : '';
-    return { id: C.id, name: T('cs_' + C.id), sub: T('cp_' + C.id) + (warn ? ' · ' + warn : ''), on, locked, perk: true,
+    return { id: C.id, name: T('cs_' + C.id), sub: T('cp_' + C.id) + (warn ? ' · ' + warn : ''), fx: T('pw_' + (C.power || 'dash')) + ': ' + T('pwd_' + (C.power || 'dash')) + ' · ' + T('cp_' + C.id), ic: 'pw_' + (C.power || 'dash'), on, locked, perk: true,
       why: locked ? srcText(src, st) : '', prog: locked && st.progress && st.progress[1] ? st.progress[0] / st.progress[1] : null, act };
   });
   // ship paint (shared by both pilots)
   const curSkin = idOf(MM('skin')) || 'falak';
   return (M.SKINS || []).map(S => {
     const ss = MM('skinState', S.id), owned = ss ? !!ss.owned : (!!MM('ownsSkin', S.id) || S.id === 'falak'), on = ss ? !!ss.wearing : S.id === curSkin;
-    return { id: S.id, name: T('sk_' + S.id), on, locked: !owned, why: owned ? '' : srcText(S.src || { type: 'free' }), ship: true,
+    return { id: S.id, name: T('sk_' + S.id), on, locked: !owned, fx: T('sc_' + S.id), ic: 'gear', why: owned ? '' : srcText(S.src || { type: 'free' }), ship: true,
       act: on || !owned ? null : { text: T('paint'), go: () => { if (MM('wearSkin', S.id)) { hook('sfx', 'chime'); hook('onChar', ch); } openSheet('costumes'); } } };
   });
 }
@@ -877,6 +883,7 @@ function sheetCostumes(body) {
     const nm = el('b', null, it.name); if (it.on) nm.appendChild(icon('check')); info.appendChild(nm);
     const sub = it.locked ? it.why : it.on ? T(step === 'pilot' ? 'ch_playing' : step === 'ship' ? 'cs_nowShip' : 'cs_nowWearing') : it.sub || '';
     if (sub) info.appendChild(el('small', it.locked ? 'why' : '', sub));
+    if (it.fx) { const f = el('small', 'dr-fx'); f.appendChild(icon(it.ic || 'star')); f.append(it.fx); info.appendChild(f); }   // v3.6: what this choice does in a flight
     if (it.prog != null) info.appendChild(progBar(it.prog));
   }
   stage.appendChild(info);
@@ -916,6 +923,7 @@ function sheetCostumes(body) {
     }, 10 + i * 12);
     if (x.on) { const m = el('em', 'dr-on'); m.appendChild(icon('check')); b.appendChild(m); }
     else if (x.locked) { const m = el('em', 'dr-lk'); m.appendChild(icon('lock')); b.appendChild(m); }
+    if (x.ic && step === 'suit') { const m = el('em', 'dr-pw'); m.appendChild(icon(x.ic)); m.title = x.fx || ''; b.appendChild(m); }   // v3.6: the costume's power, on the card itself
     b.appendChild(el('span', null, x.name));
     b.onclick = () => { if (strip.moved) return; dr.sel[key] = x.id; hook('sfx', 'tick'); openSheet('costumes'); };
     strip.appendChild(b);
@@ -1216,7 +1224,7 @@ function setTrip(jid, li) {
 }
 function hudShow(on) {
   hudOn = !!on;
-  $('hud').hidden = !on; $('superBtn').hidden = !on;
+  $('hud').hidden = !on; $('superBtn').hidden = !on; if ($('powerBtn')) $('powerBtn').hidden = !on;
   if (!on) { duelOn = null; return; }
   const t = $('toast'); if (t) t.hidden = true;
 }
@@ -1231,7 +1239,7 @@ function setDuel(rid) {
   const bar = $('rvHp'); bar.querySelectorAll('.tick').forEach(e => e.remove());
   for (let i = 1; i < phases.length; i++) { const tk = el('em', 'tick'); tk.style.left = (clamp(+phases[i].at || 0, 0, 1) * 100).toFixed(1) + '%'; bar.appendChild(tk); }
   const pp = $('rvPhase'); pp.innerHTML = ''; if (phases.length > 1) for (let i = 0; i < phases.length; i++) pp.appendChild(el('i'));
-  hc.rvF = hc.rvPh = hc.rvSh = hc.rvTicks = hc.rvIn = hc.rvStun = undefined; $('rivalBar').style.opacity = ''; $('rivalBar').style.transform = '';
+  hc.rvF = hc.rvPh = hc.rvSh = hc.rvTicks = hc.rvIn = hc.rvStun = hc.rvForm = undefined; $('rivalBar').classList.remove('form2'); $('rivalBar').style.opacity = ''; $('rivalBar').style.transform = '';
   drawRvPortrait(rid, 0, 'angry');
 }
 // v3: a boss inside a leg borrows the duel HUD; when it is fixed the trip bar comes back
@@ -1256,6 +1264,7 @@ function rivalHud(r) {
   }
   if (intro !== hc.rvIn) { const b = $('rivalBar'); b.style.opacity = intro.toFixed(2); b.style.transform = intro < 1 && !REDUCED ? 'translateY(' + Math.round((1 - intro) * -24) + 'px)' : ''; hc.rvIn = intro; }
   if (!!r.stun !== hc.rvStun) { $('rivalBar').classList.toggle('stun', !!r.stun); hc.rvStun = !!r.stun; }
+  if ((r.form | 0) !== hc.rvForm) { $('rivalBar').classList.toggle('form2', r.form === 2); hc.rvForm = r.form | 0; }   // v3.6: the giant's second form has its own bar colour
   // v3.1 big bosses: parts left (⚙ 3/4), a shield icon while the shield generator stands
   const pk = (r.partsN | 0) ? (r.parts | 0) + '/' + (r.partsN | 0) + (r.core ? '' : '+') : '';
   if (pk !== hc.rvParts) { const e = $('rvParts'); if (e) { e.hidden = !pk; e.innerHTML = ''; if (pk) { e.appendChild(icon('gear')); e.append((r.parts | 0) + '/' + (r.partsN | 0)); if (!r.core) e.appendChild(icon('shield', 'sh')); } e.title = T('h_parts'); } hc.rvParts = pk; }
@@ -1335,6 +1344,11 @@ export function hud(s) {
       $('tripShip').style.left = (f * 100).toFixed(2) + '%';
       hc.prog = prog;
     }
+  }
+  const pb = $('powerBtn');
+  if (pb && s.power) {
+    if (s.power !== hc.pwK) { pb.querySelector('.power-core').innerHTML = svgI(s.power in IC ? s.power : 'pw_' + s.power); pb.setAttribute('aria-label', T('pw_' + s.power)); hc.pwK = s.power; }
+    const pf = s.powerF == null ? 1 : +s.powerF; if (pf !== hc.pwF) { pb.style.setProperty('--f', pf); pb.classList.toggle('ready', pf >= 1); hc.pwF = pf; }
   }
   const sf = Math.round(clamp(+s.superF || 0, 0, 1) * 100) / 100;
   if (sf !== hc.sf) {
@@ -1743,6 +1757,14 @@ export function initUI(h) {
   const stop = e => e.stopPropagation();
   for (const id of ['pauseBtn', 'muteBtn']) if ($(id)) $(id).addEventListener('pointerdown', stop);
   $('pauseBtn').onclick = e => { if (!canPause && $('pause').hidden) return; if ($('pause').hidden) hook('onPause'); else hook('onResume'); e.currentTarget.blur(); };
+  const pwb = $('powerBtn');
+  if (pwb) {
+    pwb.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); pwb.classList.add('press'); hook('onPower'); });
+    const up2 = () => pwb.classList.remove('press');
+    pwb.addEventListener('pointerup', up2); pwb.addEventListener('pointercancel', up2); pwb.addEventListener('pointerleave', up2);
+    pwb.addEventListener('click', e => { if (e.detail === 0) hook('onPower'); pwb.blur(); });
+    pwb.addEventListener('contextmenu', e => e.preventDefault());
+  }
   const sb = $('superBtn');
   sb.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); sb.classList.add('press'); hook('onSuper'); });
   const unpress = () => sb.classList.remove('press');

@@ -200,7 +200,7 @@ export const leg = (jid, li) => { const j = journey(jid); return (j && j.legs[li
 export const ASSIST = {
   moon: { noDamage: true, bigHitbox: 1.6, hurtScale: 0.6, autoAim: true, bossHarmless: true, speedScale: 0.85, warnPlus: 0.8, bossAtk: 1.6, label: 'toddler' },
   mars: { regenShield: 6, respawn: true, bigHitbox: 1.3, hurtScale: 0.8, speedScale: 0.95, warnPlus: 0.4, bossAtk: 1.25, label: 'kid' },
-  venus: { bigHitbox: 1.15, warnPlus: 0.15, bossAtk: 1.1 },
+  venus: { bigHitbox: 1.15, warnPlus: 0.15, bossAtk: 1.3 },   // v3.6: the first journey that can hurt: its bosses rest longer between moves
   belt: { bigHitbox: 1.05 },
   jupiter: {},
   saturn: { warnPlus: -0.05 },
@@ -278,17 +278,37 @@ export const COSTUMES = [
   perk('star', 0, { type: 'badge', id: 'stars48' }, { comboWin: 1.5 }, fx(['#ffffff', '#fff3b0', '#ffe066'], 'star', 'star')),
 ];
 for (const c of COSTUMES) if (c.src.type === 'badge') c.badge = c.src.id;   // v1 field
+// v3.6 choices that matter. Every costume carries an active POWER (its own button in a flight, with a cooldown); perk costumes
+// keep their passive bonus on top. Ship paints are classes with their own numbers, and the two pilots have a talent each.
+//   dash    a burst forward, untouchable for a moment      pulse   wipes the enemy shots around the ship
+//   magnet  pulls in every coin and pickup on screen        slow    everything but the ship at 45% speed for `dur` s
+//   nova    a blast that hurts everything near the ship     over    double fire rate for `dur` s
+//   repair  +1 hull (a shield when the hull is full)        shards  twelve crystal shards that seek targets
+export const POWERS = { dash: { cd: 6 }, pulse: { cd: 9, r: 190 }, magnet: { cd: 10 }, slow: { cd: 14, dur: 3 }, nova: { cd: 12, r: 210 }, over: { cd: 14, dur: 4 }, repair: { cd: 40 }, shards: { cd: 12, n: 12 } };
+const POWER_OF = { white: 'dash', lilac: 'dash', comet: 'dash', blue: 'pulse', rose: 'pulse', link: 'pulse', sand: 'magnet', mint: 'magnet', magnet: 'magnet', gold: 'magnet',
+  teal: 'slow', plum: 'slow', ice: 'slow', heat: 'nova', champ: 'nova', pilot: 'over', star: 'over', rover: 'repair', hope: 'repair', crystal: 'shards' };
+for (const c of COSTUMES) c.power = POWER_OF[c.id] || 'dash';
+export const CHAR_EFF = { abood: { dmgMult: 1.1 }, mozah: { vyMult: 1.12, followPlus: 2, magnetPlus: 30 } };
+const MULT_KEYS = ['botRate', 'repairMult', 'vyMult', 'crystalWeight', 'dmgMult', 'warnMult', 'shieldCdMult', 'rateMult', 'superGainMult'];
+function mergeEff(...list) {
+  const out = {};
+  for (const e of list) for (const k in e || {}) {
+    const v = e[k]; if (typeof v !== 'number') { out[k] = v; continue; }
+    out[k] = MULT_KEYS.includes(k) ? (out[k] == null ? 1 : out[k]) * v : (out[k] || 0) + v;
+  }
+  return out;
+}
 export const SUITS = COSTUMES;
 const START_WEAR = { abood: 'white', mozah: 'lilac' };
 const COLOR_IDS = COSTUMES.filter(c => c.kind === 'color').map(c => c.id);
 export const SKINS = [
-  { id: 'falak', src: { type: 'free' } },
-  { id: 'patch', src: { type: 'rival', id: 'khurda' } },
-  { id: 'hornet', src: { type: 'rival', id: 'zannana' } },
-  { id: 'radar', src: { type: 'rival', id: 'radar' } },
-  { id: 'whirl', src: { type: 'rival', id: 'dawwama' } },
-  { id: 'anvil', src: { type: 'rival', id: 'sindan' } },
-  { id: 'royal', src: { type: 'badge', id: 'tour' } },
+  { id: 'falak', src: { type: 'free' }, eff: {} },                                                        // balanced
+  { id: 'patch', src: { type: 'rival', id: 'khurda' }, eff: { hpPlus: 1, vyMult: 0.9 } },                  // tank
+  { id: 'hornet', src: { type: 'rival', id: 'zannana' }, eff: { vyMult: 1.2, followPlus: 3, dmgMult: 0.9 } }, // racer
+  { id: 'radar', src: { type: 'rival', id: 'radar' }, eff: { warnMult: 1.2, magnetPlus: 40 } },            // scout
+  { id: 'whirl', src: { type: 'rival', id: 'dawwama' }, eff: { shieldCdMult: 0.75 } },                     // spinner
+  { id: 'anvil', src: { type: 'rival', id: 'sindan' }, eff: { dmgMult: 1.25, rateMult: 0.85 } },           // heavy
+  { id: 'royal', src: { type: 'badge', id: 'tour' }, eff: { superGainMult: 1.2 } },                        // ace
 ];
 // Usta's costume tips by ship level
 const USTA_TIPS = [[30, 'hope'], [23, 'link'], [17, 'pilot'], [12, 'heat']];
@@ -410,13 +430,15 @@ const GIANT_FIT = { khurda: [112, 84], bubolt: [110, 84], zannana: [142, 66], ma
 const YOUNG_R = { khurda: 19, bubolt: 18, zannana: 16, magna: 18, radar: 18, ghummaid: 17, dawwama: 18, sifr: 17 };
 // the giant's own area attack: zones (blast circles), ring (a shock ring with one gap), wall (a row of shots with a gap)
 const ROYAL = { khurda: 'zones', bubolt: 'wall', zannana: 'sting', magna: 'ring', radar: 'zones', ghummaid: 'ring', dawwama: 'ring', kabeer: 'zones', sindan: 'ring', sifr: 'all' };
+// v3.6: the giants are 18% bigger again (GIANT_S), and each has a second form (game.js beginForm2: ×1.15 more)
+export const GIANT_S = 1.18, FORM2_S = 1.15;
 for (const r of RIVALS) { r.stage = 3; r.royal = ROYAL[r.id] || 'zones'; r.family = GIANT_R[r.id] ? r.id : 'sifr'; if (GIANT_R[r.id]) { r.art = 'q_' + r.id; r.giant = GIANT_R[r.id]; r.fit = GIANT_FIT[r.id]; } }
 // v3.5 difficulty restudy (measured with a test pilot flying every leg at the ship level each journey asks for): boss fights
 // were over in 13-30 s once the ship had its upgrades, long before the boss showed its moves. LEG_K stretches each family's
 // three fights towards ~30 s (young), ~45 s (grown) and ~70 s (giant); game.js also grows boss HP with firepower above
 // POWER[j] (what the journey expects), so extra upgrades shorten a fight a little but never skip it. Duels keep their own HP.
-const LEG_K = { khurda: [1, 1, 0.85], bubolt: [0.7, 0.75, 0.45], zannana: [2.6, 5.2, 4.2], magna: [1.9, 3.3, 2.2], radar: [2.5, 3.3, 2.1], ghummaid: [2.7, 5, 3], dawwama: [1.75, 2.4, 1.4],
-  kabeer: [0, 0, 2.6], sindan: [0, 0, 2], sifr: [0, 0, 2.6] };
+const LEG_K = { khurda: [1, 1, 0.5], bubolt: [0.7, 0.75, 0.2], zannana: [2.6, 5.2, 2.1], magna: [1.9, 3.3, 1.15], radar: [2.5, 3.3, 1.25], ghummaid: [2.7, 5, 1.7], dawwama: [1.75, 2.4, 0.8],
+  kabeer: [0, 0, 2.6], sindan: [0, 0, 2], sifr: [0, 0, 1.3] };   // v3.6: the giants' share is lower because their second form adds half as much again on top
 export const POWER = [4, 4, 12.75, 12.75, 20.7, 20.7, 27.3, 27.3];
 for (const r of RIVALS) r.legK = (LEG_K[r.id] || [1, 1, 1])[2];
 const slower = (ph, k) => Object.assign({}, ph, { atk: (ph.atk || []).filter(a => a.k !== 'ram' && a.k !== 'pulse' && a.k !== 'lanes3').map(a => Object.assign({}, a, a.every ? { every: a.every * k } : {}, a.v ? { v: Math.round(a.v * (k > 1.2 ? 0.82 : 0.92)) } : {})) });
@@ -431,6 +453,10 @@ for (const jid in GUARDIANS) {
     else { g.art = b; g.s = 1.15; g.r = Math.round(R.r * 1.15); g.phases = R.phases.slice(0, 2).map(ph => slower(ph, 1.15)); }
   });
 }
+// v3.6 the finale is two battles: the giant's guard first (the family's grown robot again, a little weaker), then the giant.
+// Neptune's guard is Zero's own grown body.
+GUARDIANS.neptune.push(Object.assign(G('g_neptune_c', 'sifr', 1.15, 2600, 39, 60, { mode: 'hop', every: 2.4, v: 240 }, RIVALS.find(r => r.id === 'sifr').phases.slice(0, 2).map(ph => slower(ph, 1.15))), { style: 'hide', stage: 2, family: 'sifr' }));
+export const guardOf = jid => jid === 'neptune' ? 'g_neptune_c' : (GUARDIANS[jid] && GUARDIANS[jid][1] ? GUARDIANS[jid][1].id : null);
 export const family = jid => { const b = FAMILY[jid]; return b ? { base: b, young: 'y_' + b, grown: b, giant: 'q_' + b, youngR: YOUNG_R[b], grownR: (RIVALS.find(r => r.id === b) || {}).r || 34 } : null; };
 export const styleOf = R => !R ? null : R.style || (BOSS_STYLE[R.id] || [])[0] || null;
 export const styleScale = id => (BOSS_STYLE[id] || [])[1] || 1.3;
@@ -463,6 +489,8 @@ const FLAV = {
   uranus:  { intro: [['ice'], ['turret'], ['tank']], waveA: ['turrets', 'squad', 'wall'], mid: ['flare', 'corridor', 'tether'], waveB: ['squad', 'turrets', 'squad'], twist: ['grabber', 'cascade', 'flare'] },
   neptune: { intro: [['ice'], ['drone'], ['tank']], waveA: ['squad', 'turrets', 'wall'], mid: ['tether', 'grabber', 'corridor'], waveB: ['turrets', 'squad', 'squad'], twist: ['flare', 'cascade', 'corridor'] },
 };
+// v3.6: warnings act sooner. Every warning length (meteors, robot tells, boss tells, zones, rings, lasers) is × this, by journey.
+export const WARN_K = [0.85, 0.8, 0.7, 0.68, 0.65, 0.62, 0.6, 0.58];
 export const LEG_BASE = 130;         // seconds before the boss (+5 per leg index)
 export const HARD = { hp: 1.35, speed: 1.15, warn: -0.2, pay: 2 };
 const EVENTS = ['cascade', 'flare', 'corridor', 'grabber', 'scrapRain'];
@@ -483,17 +511,28 @@ export const ROBOT_ATTACKS = ['shot', 'dash', 'bomb', 'sweep', 'shield', 'swarm'
 // adds a share of the ship's own firepower so an upgraded ship still meets robots that live long enough to attack), enemy shot
 // speed, telegraph seconds, robot waves per leg, robots per wave, seconds to full rage, attack interval, robot life
 const CV = (attacks, tokens, hp, shotV, tele, waves, n, rage, every, life) => ({ robots: attacks > 0, attacks, tokens, hp, shotV, tele, waves, n, rage, every, life });
+// v3.6: the curve is no longer one step per journey. Across journeys it accelerates (tokens 2,2,3,3,4,5, one more on leg 3; attack interval
+// 2.6 → 1.35 s); inside a journey leg 1 is a breather, leg 2 the step and leg 3 the spike (LEG_SHAPE). Telegraphs are
+// shortened by WARN_K now, so `tele` stays 1 here.
 export const CURVE = [
   CV(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),              // moon: no robots (toddlers)
   CV(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),              // mars
-  CV(1, 2, 14, 190, 1.0, 2, 2, 11, 2.7, 15),     // venus: aimed shot
-  CV(2, 2, 18, 205, 0.95, 3, 2, 10, 2.5, 15),    // belt: + charge dash
-  CV(3, 3, 22, 220, 0.9, 3, 3, 9, 2.35, 16),     // jupiter: + area bomb
-  CV(4, 3, 26, 235, 0.85, 4, 3, 8.5, 2.2, 16),   // saturn: + laser sweep
-  CV(5, 4, 30, 250, 0.8, 4, 3, 8, 2.1, 17),      // uranus: + shield link
-  CV(6, 4, 34, 265, 0.75, 5, 4, 7.5, 2.0, 17),   // neptune: + swarm
+  CV(1, 2, 14, 190, 1, 2, 2, 11, 2.6, 15),       // venus: aimed shot
+  CV(2, 2, 18, 208, 1, 3, 3, 10, 2.3, 15),       // belt: + charge dash
+  CV(3, 3, 23, 226, 1, 3, 3, 9, 2.0, 16),        // jupiter: + area bomb
+  CV(4, 3, 28, 246, 1, 4, 4, 8, 1.75, 16),       // saturn: + laser sweep
+  CV(5, 4, 34, 268, 1, 4, 4, 7.2, 1.55, 17),     // uranus: + shield link
+  CV(6, 5, 41, 292, 1, 5, 5, 6.5, 1.35, 17),     // neptune: + swarm
 ];
-export const curve = j => CURVE[clamp(j | 0, 0, CURVE.length - 1)];
+const LEG_SHAPE = [0.85, 1, 1.2];
+export const curve = (j, li = 1) => {
+  const C = CURVE[clamp(j | 0, 0, CURVE.length - 1)], k = LEG_SHAPE[clamp(li | 0, 0, 2)];
+  if (!C.robots || k === 1) return C;
+  return Object.assign({}, C, { every: +(C.every / k).toFixed(2), n: Math.max(1, Math.round(C.n * k)), tokens: Math.max(1, C.tokens + (li === 0 ? -1 : 1)), rage: +(C.rage / k).toFixed(1) });
+};
+// v3.6 threat: the robots answer the ship's upgrades. Levels above what the journey asks for raise the pressure (more robots,
+// more of them attacking, shorter pauses, tougher rocks, less rest between boss moves), so upgrades help but never empty the screen.
+export const threat = (j, lv) => { const need = (JOURNEYS[j] || {}).need || 0; return j >= 2 ? clamp(1 + 0.06 * (lv - need), 1, 2) : j === 1 ? clamp(1 + 0.02 * lv, 1, 1.25) : 1; };
 // leg modifiers (Jupiter on): one twist per leg, two on the Hard tier
 export const MODS = ['ion', 'dark', 'magnet', 'wind'];
 // replays draw their waves and set pieces from the journey's pool with a seed, so the same leg flies differently
@@ -541,15 +580,18 @@ export function legPlan(jid, li, hard = false, seed = null) {
   beats.push(...piece(F.waveB[li], r(0.68) + 1, j, li, D));
   beats.push({ t: r(0.75), kind: 'pods', n: 1, over: 1 });
   // the twist
-  beats.push({ t: r(0.85), kind: 'filler', dur: r(0.1), rate: 0.5 });
+  beats.push({ t: r(0.85), kind: 'filler', dur: r(0.1), rate: j >= 2 ? 0.8 : 0.5 });
   beats.push(...piece(F.twist[li], r(0.85) + 1, j, li, D));
   // v3.1 rage robots (Venus on): a teach beat on the first leg, then waves that grow with the leg and the journey
-  const C = curve(j);
+  const C = curve(j, li);
   if (C.robots) {
     const newest = ROBOT_ATTACKS[C.attacks - 1];
     if (li === 0) { beats.push({ t: r(0.05), kind: 'wave', form: 'robots', n: 1, teach: newest }); beats.push({ t: r(0.05), kind: 'say', key: 'bot_teach_' + newest }); }
-    const slots = [0.18, 0.4, 0.6, 0.75, 0.88].slice(0, Math.min(5, C.waves + li));
-    slots.forEach((f, i) => beats.push({ t: r(f), kind: 'wave', form: 'robots', n: C.n + (li >= 2 ? 1 : 0) + (hard ? 1 : 0), elite: li === 0 ? 0 : li === 1 ? (i % 2) : 1 + (j >= 6 && i === slots.length - 1 ? 1 : 0) }));
+    const slots = [0.18, 0.4, 0.6, 0.75].slice(0, Math.min(4, C.waves + li - 1));
+    // the rush: one last hard push together with the twist set piece, then the calm before the boss
+    beats.push({ t: r(0.86), kind: 'wave', form: 'robots', n: C.n + 1 + (hard ? 1 : 0), elite: li === 0 ? 0 : 1, rush: true });
+    if (j >= 5) beats.push({ t: r(0.57), kind: 'wave', form: 'robots', n: Math.max(2, C.n - 1), elite: 0 });   // from Saturn on robots fly in during the middle set piece too
+    slots.forEach((f, i) => beats.push({ t: r(f), kind: 'wave', form: 'robots', n: C.n + (hard ? 1 : 0), elite: li === 0 ? 0 : li === 1 ? (i % 2) : 1 + (j >= 6 && i === slots.length - 1 ? 1 : 0) }));
   }
   // v3.3 supply drones: three per leg carry a weapon capsule (the only source of weapons now)
   for (const f of [0.22, 0.5, 0.8]) beats.push({ t: r(f), kind: 'carrier' });
@@ -559,13 +601,19 @@ export function legPlan(jid, li, hard = false, seed = null) {
   beats.push({ t: r(0.95) + 1, kind: 'relief', pick: 'repair', n: 1 });
   const B = bossOf(jid, li);
   if (B) {
-    beats.push({ t: D - 4, kind: 'warn', boss: B.id });
+    const guard = li === 2 ? guardOf(jid) : null;
+    if (guard) { // battle 1: the guard. Battle 2: the giant, after a short breath with a repair
+      beats.push({ t: D - 6.2, kind: 'warn', boss: guard });
+      beats.push({ t: D - 3.8, kind: 'boss', id: guard, kind2: 'guardian', scale: (hard ? HARD.hp : 1) * 0.65, final: false, guard: true });
+      beats.push({ t: D - 3.5, kind: 'relief', pick: 'repair', n: 1 });
+      beats.push({ t: D - 3.2, kind: 'warn', boss: B.id, giant: true });
+    } else beats.push({ t: D - 2.4, kind: 'warn', boss: B.id });
     beats.push({ t: D - 0.5, kind: 'boss', id: B.id, kind2: B.kind, scale: hard ? HARD.hp : 1, final: true });
   }
   beats.sort((a, b) => a.t - b.t);
   const star = Math.round(L.star * (D / L.dur) * 1.15 / 50) * 50;
   const plan = { jid, li, hard: !!hard, dur: D, star, speedScale, warnPlus, assist, hpMul: (L.hp > 0 ? L.hp : 1) * (hard ? HARD.hp : 1),
-    beats, rescueTotal: 3, boss: B, bossAtk: assist.bossAtk || 1, curve: curve(j), mods: [] };
+    beats, rescueTotal: 3, boss: B, bossAtk: assist.bossAtk || 1, curve: curve(j, li), mods: [] };
   if (j >= 4) {
     const R = seed != null ? rng(seed ^ 0x9e37) : null, first = R ? MODS[Math.floor(R() * MODS.length)] : MODS[(j * 2 + li) % MODS.length];
     plan.mods.push(first);
@@ -943,7 +991,7 @@ export function ustaTip() {
 
 // The ONLY source of combat numbers for game.js (boosters are not in here: game.js applies launchBoosters() itself).
 export function stats() {
-  const cs = costume(), e = cs.eff, b = upValue('blaster'), sp = upValue('super'), en = upValue('engine'), nb = upValue('nabeeh'),
+  const cs = costume(), sk = SKINS.find(x => x.id === skin()) || SKINS[0], e = mergeEff(cs.eff, sk.eff, CHAR_EFF[char()]), b = upValue('blaster'), sp = upValue('super'), en = upValue('engine'), nb = upValue('nabeeh'),
     hu = upValue('hull'), sh = upValue('shield'), mg = upValue('magnet'), lv = level('nabeeh'), guns = upValue('spread').guns;
   const rate = r2(nb.rate * (e.botRate || 1));
   return {
@@ -951,9 +999,10 @@ export function stats() {
     fx: { trail: cs.fx.trail.slice(), particle: cs.fx.particle, bolt: cs.fx.bolt, aura: cs.fx.aura ? Object.assign({}, cs.fx.aura) : null,
       life: cs.fx.life || 1, rings: cs.fx.rings ? Object.assign({}, cs.fx.rings) : null },
     maxHp: hu.maxHp + (e.hpPlus || 0),
-    dmg: r2(b.dmg * (e.dmgMult || 1), 3), fireRate: b.fireRate, guns, pierce: b.pierce, regen: hu.regen,
-    shieldCd: sh.shieldCd, shieldBlast: sh.shieldBlast,
-    superGain: sp.superGain, superDur: r2(sp.superDur + (e.superDurPlus || 0)), superPassive: sp.superPassive, superStart: e.superStart || 0,
+    dmg: r2(b.dmg * (e.dmgMult || 1), 3), fireRate: r2(b.fireRate * (e.rateMult || 1)), guns, pierce: b.pierce, regen: hu.regen,
+    shieldCd: r2(sh.shieldCd * (e.shieldCdMult || 1)), shieldBlast: sh.shieldBlast,
+    power: cs.power, powerCd: (POWERS[cs.power] || {}).cd || 10, warnMult: e.warnMult || 1,
+    superGain: r2(sp.superGain * (e.superGainMult || 1)), superDur: r2(sp.superDur + (e.superDurPlus || 0)), superPassive: sp.superPassive, superStart: e.superStart || 0,
     follow: en.follow + (e.followPlus || 0), maxVy: Math.round(en.maxVy * (e.vyMult || 1)), nearMiss: en.nearMiss,
     magnet: mg.magnet + (e.magnetPlus || 0), pullPickups: mg.pullPickups,
     // Nabeeh: level 0 only floats and warns; 1+ fires `rate` shots/s (every `every` s) for `dmg`; 2+ warns earlier;

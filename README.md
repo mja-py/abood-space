@@ -130,6 +130,35 @@ Measured with a test pilot (a dodge-and-aim bot) flying all 24 legs at the ship 
   and 50-70 s (giant) from Venus on; the Moon stays near 20/25/30 s and Mars near 35/55/60 s.
 - One laser sweep on screen at a time, and a sweep stops closer past the ship. Duel giants get a share of the stretch.
 
+## Room, finale, curve and choices (v3.6)
+
+Testers asked for more freedom to move, faster warnings, a curve that is not linear and does not go soft after upgrades,
+a finale that is a real second battle, more horizontal room, and characters that differ.
+
+- **Field and movement.** The field is zoomed out about 10% (`WORLD_W` 960) and the ship flies in the left **65%**.
+  Bolts are 30% stronger over their first 230 px (point-blank), so flying close is worth the risk. The ship no longer
+  grows with its tier (`SHIP_S`), the gun fan is tighter, wingmen sit closer.
+- **Warnings** are shorter everywhere by journey (`WARN_K` in `js/meta.js`: Moon ×0.85 … Neptune ×0.58); the pre-boss
+  WARNING is 2.4 s and the title card 1.7 s.
+- **Curve.** `curve(j, li)`: across journeys it accelerates (attack tokens 2,2,3,3,4,5; attack interval 2.6 → 1.35 s),
+  and inside a journey leg 1 is a breather, leg 2 the step, leg 3 the spike (`LEG_SHAPE`). Every leg from Venus ends its
+  flying part with a **rush** wave; from Saturn robots also fly in during the middle set piece.
+- **Threat.** `threat(j, shipLevel)`: every upgrade level above what the journey asks for raises the pressure (more
+  robots per wave, one more attacker at 1.5, shorter pauses, tougher rocks, less rest between boss moves). Measured: a
+  ship 8 levels over takes about as many hits as an on-level one, not fewer.
+- **Finale = two battles, and a second form.** Leg 3 brings the family's grown robot as the **guard**, then (after a
+  repair and a rumble) the **giant**, 18% bigger than in v3.5. At zero energy the giant does not give up: it grows
+  another 15%, refills half a bar and fights as its **second form** (shorter rests, elite workers, two area blasts in a
+  row, and `fury`: walls of shots and exploding lanes that leave one safe lane). Duel rematches fight both forms.
+- **Choices that matter.**
+  - Every costume has an active **power** on its own button (key `E`): Dash, Pulse, Magnet burst, Slow time, Nova,
+    Overdrive, Repair, Shard storm (`POWERS` in `js/meta.js`). Perk costumes keep their passive bonus on top.
+  - Ship paints are **classes**: Falak balanced, Patchwork tank, Hornet racer, Radar scout, Whirl spinner, Anvil heavy,
+    Royal ace.
+  - Abood is the gunner (shots +10%), Mozah the flyer (ship +12%, pickups from further).
+  - The pickers show the power or class on every card.
+- **Test pilot.** `tools/pilot.js` flies legs by itself and reports hits, causes and fight lengths (see Testing).
+
 ## Screens and layout (v3.2)
 
 - **One play-field shape everywhere.** The field is always about 2.15:1, the shape of a phone held sideways. iPads,
@@ -210,6 +239,7 @@ js/art.js                     all drawing: space, planets, ship, Abood, Nabeeh, 
 js/ui.js                      menus, hangar, suits, missions, badges, results, HUD
 js/meta.js                    save, journeys, leg plans (timelines), assist profiles, guardians, economy, upgrades, missions, badges
 js/bosses.js                  the boss brain (senses, move choice, memory, family stages, giant moves) and the nine boss styles
+tools/pilot.js                dev tool: a test pilot that flies legs and reports hits and fight lengths (not loaded by the game)
 js/pieces.js                  drawing for the set pieces: turrets, grabber, tether, station walls, rescue pods, solar flare
 js/i18n.js                    Arabic + English text
 sw.js, manifest.webmanifest   offline + install (landscape, fullscreen)
@@ -236,4 +266,4 @@ without animation frames, `jump(120)` moves the leg clock, `skip()` jumps to the
 `winDuel()` fixes the boss, `beats()` lists the leg's timeline, `info()` shows the run. v3.1 adds `robot({ atk:['bomb'] })`,
 `weapon('saw')`, `wing()`, `combat()` (robots, zones, tokens), `killPart('shieldGen')`, `setXY(x, y)` and `rival()` with parts and guards. v3.3 adds `bs()` (the styled boss: style, mode, targets, HP),
 `hitBoss(n)`, `carrier()`, `picks()` and `wpn()`. v3.4 adds `brain()` (what the boss senses and plans), `bossMove('dart')` (force a move) and
-`bossMem()` (its memory of earlier fights; `bossMem(null)` clears it). v3.5 adds `world()` (the live arrays, for test pilots) and `info().hitLog` (what hit the ship and when).
+`bossMem()` (its memory of earlier fights; `bossMem(null)` clears it). v3.6 adds `power('nova')` (fire a costume power), `threat()`, `debug.noForm2 = true` (skip the giant's second form), and the test pilot: `const P = await import('/tools/pilot.js'); P.boot(); await P.fly('venus', 2, 12)` or `P.sweep([0,0,12,15,18,21,24,27])` then `P.result()`. v3.5 adds `world()` (the live arrays, for test pilots) and `info().hitLog` (what hit the ship and when).

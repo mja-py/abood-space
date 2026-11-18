@@ -1441,12 +1441,12 @@ export function drawShieldBubble(c, x, y, r, f = 1, t = 0) {
 }
 
 // ---------- ship ----------
-const SHIP_S = [1, 1.06, 1.12, 1.19, 1.26];
+const SHIP_S = [1, 1.02, 1.04, 1.06, 1.08];   // v3.6: tiers add parts, not size (an upgraded ship no longer crowds the field)
 export const shipScale = tier => SHIP_S[clamp(tier | 0, 0, 4)];
 // collision radius suggestion (circle) for the ship body at each tier
 export const shipRadius = tier => 16 * shipScale(tier);
 const MOUNTS = { N: [42, 3], U: [17, -13.5], L: [19, 15], UU: [5, -21], LL: [7, 24] };
-const GUNSETS = [null, [['N', 0]], [['U', -0.04], ['L', 0.04]], [['N', 0], ['U', -0.1], ['L', 0.1]], [['U', -0.05], ['L', 0.05], ['UU', -0.16], ['LL', 0.16]], [['N', 0], ['U', -0.08], ['L', 0.08], ['UU', -0.17], ['LL', 0.17]]];
+const GUNSETS = [null, [['N', 0]], [['U', -0.04], ['L', 0.04]], [['N', 0], ['U', -0.07], ['L', 0.07]], [['U', -0.035], ['L', 0.035], ['UU', -0.1], ['LL', 0.1]], [['N', 0], ['U', -0.05], ['L', 0.05], ['UU', -0.105], ['LL', 0.105]]];   // v3.6: a tighter fan, one stream
 export function GUN_POINTS(tier = 0, guns = 1) {
   const S = shipScale(tier), set = GUNSETS[clamp(guns | 0, 1, 5)];
   return set.map(([m, a]) => ({ dx: MOUNTS[m][0] * S, dy: MOUNTS[m][1] * S, angle: a }));

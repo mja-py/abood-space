@@ -24,7 +24,7 @@ const cv = $('cv'), ctx = cv.getContext('2d', { alpha: false });
 const H = 400, SHIP_X = 110, Y_MIN = 40, Y_MAX = 370;
 // v3.2: one play-field shape on every screen (the phone's, about 2.15:1). Taller screens (iPad, square, 16:9) get bands
 // above and below, wider ones bands at the sides, so dodging room and crossing times are the same everywhere.
-const WORLD_W = 860, WORLD_MAX = 900;
+const WORLD_W = 960, WORLD_MAX = 1000;   // v3.6: zoomed out about 10% for more horizontal room
 const INK = '#1c1530', FONT = '"Baloo Bhaijaan 2", "Trebuchet MS", Tahoma, system-ui, sans-serif';
 const TAU = Math.PI * 2;
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -373,7 +373,8 @@ let dragId = null, dragY = 0, dragX = 0;
 function logicalY(e) { const r = cv.getBoundingClientRect(); return (e.clientY - r.top) / scale - offY; }
 function logicalX(e) { const r = cv.getBoundingClientRect(); return (e.clientX - r.left) / scale - offX; }
 // v3.1 free movement: the ship flies anywhere in the left 40% of the screen
-const X_MIN = 70, xMax = () => Math.max(SHIP_X + 60, W * 0.4);
+const PB_K = 1.3, PB_D = 230;
+const X_MIN = 70, xMax = () => Math.max(SHIP_X + 60, W * 0.65);   // v3.6: the ship may fly in the left 65%
 const isUI = e => e.target && e.target.closest && e.target.closest('button, a, input, select, .panel, .sheet, [role="dialog"]');
 
 cv.style.touchAction = 'none';
@@ -409,6 +410,7 @@ addEventListener('keydown', e => {
   else if (c === 'ArrowLeft' || c === 'KeyA') { keys.left = true; if (st === 'play') e.preventDefault(); }
   else if (c === 'ArrowRight' || c === 'KeyD') { keys.right = true; if (st === 'play') e.preventDefault(); }
   else if (c === 'Space' || c === 'KeyX') { if (st === 'play') { e.preventDefault(); if (!e.repeat) doSuper(); } }
+  else if (c === 'KeyE' || c === 'ShiftLeft' || c === 'KeyC') { if (st === 'play' && !e.repeat) usePower(); }
   else if (c === 'KeyP' || c === 'Escape') { if (pausable()) setPause(true); else if (st === 'pause') setPause(false); }
 });
 addEventListener('keyup', e => {
@@ -501,7 +503,7 @@ function beginRun() {
   if (run.extraHull > 0) S.maxHp += run.extraHull;   // v3 hidden assist after repeated deaths
   safe(M.startRun);
   ship = { x: SHIP_X, tx: SHIP_X, px: SHIP_X, vxp: 0, y: 210, ty: 210, py: 210, vy: 0, tilt: 0, hp: S.maxHp, maxHp: S.maxHp, inv: 0, alive: true,
-    shieldUp: shieldCd() > 0 || !!run.startShield, shieldT: 0, extraShield: B.shield ? 1 : 0, fireT: 0.3, rapidT: 0, sc: 1, vx: 0, thrust: 0.6 };
+    shieldUp: shieldCd() > 0 || !!run.startShield, shieldT: 0, extraShield: B.shield ? 1 : 0, fireT: 0.3, rapidT: 0, sc: 1, vx: 0, thrust: 0.6, pwCd: 1.5, pwMax: 1.5, dashT: 0 };
   bot = { x: SHIP_X - 60, y: 160, vx: 0, vy: 0, mood: 'normal', moodT: 0, say: '', sayT: 0, sayMax: 1, lastSay: -99, zapT: 1, startSay: 0.9 };
   superF = B.super ? 1 : clamp(S.superStart || 0, 0, 1); superWasFull = false; beamT = 0; beamMax = Math.max(0.5, S.superDur || 2.2);
   comboN = 0; comboT = 0; mult = 1; lastMult = 1; scroll = 0; shakeA = 0; hitStop = 0; flashA = 0; arrive = null;
@@ -546,11 +548,13 @@ function start(jid, li = 0) {
   // leg fields (DESIGN §4.3) and costume perks (§5)
   run.mix = Object.assign({}, L.mix || {});
   if (run.mix.crystal) run.mix.crystal *= S.crystalWeight || 1;
-  run.hpMul = plan ? plan.hpMul : L.hp > 0 ? L.hp : 1;
+  run.threat = safe(M.threat, ji, safe(M.shipLevel) | 0) || 1;
+  run.hpMul = (plan ? plan.hpMul : L.hp > 0 ? L.hp : 1) * Math.pow(run.threat, 0.7);
+  if (run.threat >= 1.3) later(7, () => say('bot_threat', true));
   run.coinMul = L.coin > 0 ? L.coin : 1;
   run.pickMul = L.pick > 0 ? L.pick : 1;
   run.mv = L.mv;
-  run.warn = (L.warn || 1.1) + (S.warnPlus || 0) + (S.bot.warnPlus || 0) + (plan ? plan.warnPlus : 0);
+  run.warn = (L.warn || 1.1) * WK() * (S.warnMult || 1) + (S.warnPlus || 0) + (S.bot.warnPlus || 0) + (plan ? plan.warnPlus : 0);
   safe(UI.hideMenus); safe(UI.showPause, false); safe(UI.showHud, true, jid, li);
   if (hard) safe(UI.note, tt('f_hard'));
   if (mods.length) later(1.8, () => { safe(UI.banner, tt('mod_title', 'Space weather'), mods.map(m => tt('mod_' + m, m)).join(' · '), 3400); sfx.warn(); });
@@ -676,7 +680,7 @@ function spawner(dt) {
   const L = run.L, prog = run.elapsed / L.dur, fm = run.fillerMul == null ? 1 : run.fillerMul;
   run.spawnT -= dt;
   if (run.spawnT > 0 || fm <= 0) return;
-  const rate = Math.max(0.2, (L.spawn || 1) * (0.8 + 0.4 * prog) * (run.mercyT > 0 ? 0.7 : 1) * fm * directorK());
+  const rate = Math.max(0.2, (L.spawn || 1) * (0.8 + 0.4 * prog) * (run.mercyT > 0 ? 0.7 : 1) * fm * directorK() * Math.pow(run.threat || 1, 0.4));
   run.spawnT = (1 / rate) * rnd(0.6, 1.4);
   if (objs.length < 60) spawnKind(weighted(run.mixNow || run.mix || L.mix || {}));
 }
@@ -726,7 +730,7 @@ function beat(b) {
       break; }
     case 'say': say(b.key, true); break;
     case 'carrier': makeCarrier(); break;
-    case 'warn': bossWarn(b.boss); break;
+    case 'warn': bossWarn(b.boss, b.giant); break;
     case 'boss': startBoss(b); break;
     case 'wave': case 'event': case 'pods': setPiece(b); break;
     default: errOnce('beat?' + b.kind, new Error('unknown beat ' + b.kind));
@@ -811,7 +815,7 @@ function bandFix(o, dt) {
   else o.outT = 0;
 }
 function squadMove(o, dt) {
-  if (o.st === 'in') { o.x += o.vx * dt; o.ph += dt * 2.5; o.y = o.by + Math.sin(o.ph) * 26; if (o.x < W * 0.6) { o.st = 'dive'; const dx = ship.x - o.x, dy = ship.y - o.y, d = Math.hypot(dx, dy) || 1, v = run.L.speed * 2.4; o.dvx = dx / d * v; o.dvy = dy / d * v; } }
+  if (o.st === 'in') { o.x += o.vx * dt; o.ph += dt * 2.5; o.y = o.by + Math.sin(o.ph) * 26; if (o.x < Math.max(W * 0.6, ship.x + 230)) { o.st = 'dive'; const dx = ship.x - o.x, dy = ship.y - o.y, d = Math.hypot(dx, dy) || 1, v = run.L.speed * 2.4; o.dvx = dx / d * v; o.dvy = dy / d * v; } }
   else { o.x += o.dvx * dt; o.y += o.dvy * dt; o.dvy *= Math.exp(-0.5 * dt); }
 }
 // a tethered junk piece swings on a cable under its anchor; cut the anchor and it floats off
@@ -846,9 +850,9 @@ function setPiece(b) {
   }
   if (b.kind === 'wave') {
     switch (b.form) {
-      case 'robots': { const n = b.n | 0 || 1;
-        if (b.teach) { const o = makeRobot({ teach: b.teach, y: 200, sx: W * 0.72 }); if (o) { o.life = 16; say2('rb_' + b.teach, W * 0.55, 90, '#ffb3b3'); } break; }
-        for (let i = 0; i < n; i++) later(i * 0.7, () => makeRobot({ elite: i < (b.elite | 0) }));
+      case 'robots': { const T = run.threat || 1, n = (b.n | 0 || 1) + (b.teach ? 0 : Math.floor((T - 1) * 2.5)), el = (b.elite | 0) + (T >= 1.6 ? 1 : 0);
+        if (b.teach) { const o = makeRobot({ teach: b.teach, y: 200, sx: W * 0.8 }); if (o) { o.life = 16; say2('rb_' + b.teach, W * 0.55, 90, '#ffb3b3'); } break; }
+        for (let i = 0; i < n; i++) later(i * 0.7, () => makeRobot({ elite: i < el }));
         if (!run.robotSaid) { run.robotSaid = true; say(run.li === 0 ? 'bot_family' : 'bot_robots', true); }
         break; }
       case 'wall': for (let k = 0; k < (b.n | 0 || 1); k++) spawnWall(b.gap || 150, k); break;
@@ -943,7 +947,9 @@ function drawWeather(c) {
   if (m.includes('ion')) { c.save(); c.globalAlpha = 0.07 + 0.04 * Math.sin(t * 3); c.fillStyle = '#7fd3ff'; c.fillRect(0, 0, W, H); c.restore(); }
 }
 const TELE = { shot: 0.6, dash: 0.9, bomb: 1.25, sweep: 1.0, shield: 0.6, swarm: 0.8 };
-const teleOf = k => Math.max(0.35, (TELE[k] || 0.8) * (CUR().tele || 1) + ((run.AS && run.AS.warnPlus) || 0) * 0.6);
+// v3.6: every warning is shorter, more so on the later journeys (meta.js WARN_K); the kids' assists still add on top
+const WK = () => (M.WARN_K || [])[run ? run.ji | 0 : 0] || 1;
+const teleOf = k => Math.max(0.35, (TELE[k] || 0.8) * (CUR().tele || 1) * WK() + ((run.AS && run.AS.warnPlus) || 0) * 0.6);
 const tokensUsed = () => { let n = 0; for (const o of objs) if (!o.dead && o.act) n++; return n; };
 function robotY(o) { // a lane away from the other robots
   let best = o ? o.y : 200, bd = -1;
@@ -981,8 +987,8 @@ function makeRobot(opt = {}) {
   const el = !!opt.elite, sy = opt.y != null ? opt.y : robotY(null), hp = ((C.hp || 14) + dps * tough) * (run.hpMul || 1) * (opt.hpK || 1) * (el ? 1.9 : 1);
   const o = { type: 'junk', kind: 'robot', size: 'M', x: opt.x != null ? opt.x : W + 30, y: sy, by: sy, r: el ? 25 : 20, hp, max: hp, pts: el ? 150 : 70, sg: el ? 0.1 : 0.06, elite: el,
     vx: 0, vy: 0, rot: 0, vr: 0, seed: Math.floor(Math.random() * 9999), flash: 0, dead: false, killT: 0, ph: rnd(0, TAU), wob: 0,
-    st: 'in', sx: opt.sx != null ? opt.sx : rnd(W * 0.58, W - 70), sy, life: opt.life || (opt.teach ? 16 : C.life || 15), age: 0, atk, main,
-    cd: opt.teach ? 1.2 : rnd(1.0, 2.0), act: null, tell: 0, rage: el ? 0.45 : 0, raging: false, strafeT: rnd(2, 4), minion: !!opt.minion, teach: !!opt.teach,
+    st: 'in', sx: opt.sx != null ? opt.sx : rnd(W * 0.74, W - 60), sy, life: opt.life || (opt.teach ? 16 : C.life || 15), age: 0, atk, main,
+    cd: opt.teach ? 1.2 : rnd(0.6, 1.2), act: null, tell: 0, rage: el ? 0.45 : 0, raging: false, strafeT: rnd(2, 4), minion: !!opt.minion, teach: !!opt.teach,
     shieldBy: null, dashing: false, move: robotMove, onHit: robotHit, draw: (c, o) => PZ.drawRageBot(c, o, t) };
   if (A.drawRival && M.FAMILY) kinLook(o, el);
   objs.push(o);
@@ -1013,7 +1019,7 @@ function robotMove(o, dt) {
   if (o.act) { robotAct(o, dt); return; }
   if (o.st !== 'hold' || st !== 'play' || !ship.alive || debug.noAttack || run.ending) return;
   o.cd -= dt * spd / directorK();
-  if (o.cd <= 0) { if (tokensUsed() < (C.tokens || 2) + (o.raging ? 1 : 0)) startAct(o); else o.cd = 0.25; }
+  if (o.cd <= 0) { if (tokensUsed() < (C.tokens || 2) + (o.raging ? 1 : 0) + ((run.threat || 1) >= 1.5 ? 1 : 0)) startAct(o); else o.cd = 0.25; }
 }
 function startAct(o) {
   let k = pickAtk(o.atk, o.main);
@@ -1024,7 +1030,7 @@ function startAct(o) {
   o.act = a;
   if (k === 'bomb') { // the target circle shows at once: the telegraph IS the circle
     const n = o.raging ? 2 : 1;
-    for (let i = 0; i < n; i++) { const lead = i ? (ship.vy || 0) * 0.5 : 0; addZone(clamp(ship.x + (i ? rnd(-30, 50) : 0), 40, W * 0.5), clamp(ship.y + lead + (i ? rnd(-60, 60) : 0), Y_MIN, Y_MAX), o.raging ? 62 : 50, a.warn + 0.15, o.x, o.y - 18); }
+    for (let i = 0; i < n; i++) { const lead = i ? (ship.vy || 0) * 0.5 : 0; addZone(clamp(ship.x + (i ? rnd(-30, 50) : 0), 40, W * 0.7), clamp(ship.y + lead + (i ? rnd(-60, 60) : 0), Y_MIN, Y_MAX), o.raging ? 62 : 50, a.warn + 0.15, o.x, o.y - 18); }
     sfx.mine();
   } else if (k === 'sweep') {
     const sg = ship.y >= o.y ? 1 : -1, y1 = clamp(ship.y + sg * (o.raging ? 70 : 46), Y_MIN - 10, Y_MAX + 10);   // it stops a little past the ship: step on, or duck back behind the robot's line
@@ -1047,7 +1053,7 @@ function robotAct(o, dt) {
     // bomb and sweep run on their own timers once started
   }
   o.act = null; o.tell = 0;
-  o.cd = (C.every || 2.5) * rnd(0.85, 1.15) * (o.raging ? 0.6 : 1) * (o.teach ? 0.7 : 1);
+  o.cd = (C.every || 2.5) * rnd(0.85, 1.15) * (o.raging ? 0.6 : 1) * (o.teach ? 0.7 : 1) / Math.sqrt(run.threat || 1);
 }
 function addZone(x, y, r, warn, bx, by) { if (zones.length < 16) zones.push({ x, y, r, t: 0, warn: Math.max(0.5, warn), ph: 'warn', bx, by, dead: false }); }
 function zoneHits(x, y, r) {
@@ -1092,7 +1098,7 @@ function updateCombat(dt) {
 }
 
 // ---- wingmen: rescued maintenance robots fly with the ship, shoot, and take one hit each ----
-const WING_SLOTS = [[-16, -50], [-16, 50], [-50, 0]];
+const WING_SLOTS = [[-14, -38], [-14, 38], [-44, 0]];
 function wingMax() { return 2 + (S && S.bot && S.bot.lv >= 5 ? 1 : 0); }
 function addWing() {
   if (wings.filter(w => !w.dead).length >= wingMax()) return false;
@@ -1190,15 +1196,17 @@ function drawPiecesUnder(c) {
 }
 function drawPiecesOver(c) {
   drawCombatOver(c);
+  if (run.slowT > 0) { c.save(); c.globalAlpha = 0.1 * Math.min(1, run.slowT * 2); c.fillStyle = '#9fdcff'; c.fillRect(0, 0, W, H); c.restore(); }
   try { drawWeather(c); } catch (e) { errOnce('weather', e); }
   const F = run.flare; if (!F) return;
   PZ.drawFlare(c, W, H, F.t < F.warn ? clamp(F.t / F.warn, 0, 1) : 1 - F.flash * 0.5, F.flash, t);
 }
-function bossWarn(id) {
+function bossWarn(id, giant) {
   const name = rvName(id);
-  safe(UI.banner, tt('f_warning', 'WARNING'), name, 3600);
-  sfx.warn(); sfx.rivalPhase(); mood('alert', 3.5); shake(3);
-  say(safe(M.guardian, id) ? 'bot_guardian' : 'bot_boss', true);
+  safe(UI.banner, tt('f_warning', 'WARNING'), giant ? tt('bc_q_' + id, name) : name, giant ? 2600 : 2200);
+  sfx.warn(); sfx.rivalPhase(); mood('alert', 3); shake(giant ? 9 : 3);
+  if (giant) { for (const d of [0.6, 1.2, 1.9]) later(d, () => { shake(7); sfxT('rockhit', 0.1, 0.4, 0.9); }); say('bot_second', true); }   // something huge is coming
+  else say(safe(M.guardian, id) ? 'bot_guardian' : 'bot_boss', true);
 }
 function spawnMeteor(y, quiet = false) {
   const warn = (run && run.warn) || 1.1;
@@ -1438,6 +1446,36 @@ function die() {
   else say('bot_lose', true);
   st = 'dead'; stT = 0; run.deadT = 0;
 }
+// v3.6 the costume's power (meta.js POWERS): its own button, its own cooldown
+function usePower(force) {
+  if (st !== 'play' || !ship || !ship.alive || duelSafe()) return false;
+  const k = force || S.power || 'dash', P = (M.POWERS || {})[k] || { cd: 10 };
+  if (ship.pwCd > 0 && !force) return false;
+  ship.pwCd = ship.pwMax = P.cd; run.powers = (run.powers || 0) + 1;
+  const dmg = (S.dmg || 1) * (rv ? S.duelBolt || 1 : 1), near = (x, y, r) => (x - ship.x) ** 2 + (y - ship.y) ** 2 < r * r;
+  switch (k) {
+    case 'dash': ship.inv = Math.max(ship.inv, 0.75); ship.dashT = 0.32; ship.tx = clamp(ship.x + 200, X_MIN, xMax()); sfx.whoosh(); sparks(ship.x - 10, ship.y, 14, '#bfeaff', 220, -200); break;
+    case 'pulse': { const r = P.r || 190;
+      for (const s of eshots) if (!s.dead && near(s.x, s.y, r)) { s.dead = true; sparks(s.x, s.y, 3, '#9ff0ff', 100); }
+      for (const m of emobs.slice()) if (!m.dead && near(m.x, m.y, r)) killMob(m, 'blast');
+      ring(ship.x, ship.y, r, '#9ff0ff', 0.45); ring(ship.x, ship.y, r * 0.6, '#ffffff', 0.3); sfx.shieldpop(); shake(4); break; }
+    case 'magnet': for (const p of picks) if (!p.dead && p.kind !== 'pod') p.pulled = true; ring(ship.x, ship.y, 150, '#7fb4ff', 0.5); ring(ship.x, ship.y, 260, '#7fb4ff', 0.6); sfx.pickup(); break;
+    case 'slow': run.slowT = P.dur || 3; ring(ship.x, ship.y, 220, '#bfeaff', 0.6); sfx.rivalPhase(); break;
+    case 'nova': { const r = P.r || 210;
+      for (const o of objs.slice()) if (!o.dead && !o.ghost && near(o.x, o.y, r + o.r)) damage(o, dmg * 8, 'blast');
+      for (const s of eshots) if (!s.dead && near(s.x, s.y, r * 0.75)) s.dead = true;
+      if (rv && run.ds === 'fight' && near(rv.x, rv.y, r + rv.r)) damageRival(dmg * 8, 'blast');
+      ring(ship.x, ship.y, r, '#ff8a2a', 0.5); ring(ship.x, ship.y, r * 0.55, '#ffd27a', 0.35); sparks(ship.x, ship.y, 26, '#ffb347', 280); play('boomL', 1.2, 0.7); shake(9); flashA = REDUCED ? 0 : 0.2; break; }
+    case 'over': ship.rapidT = Math.max(ship.rapidT, P.dur || 4); ring(ship.x, ship.y, 60, '#ffe066', 0.4); sfx.pickup(); break;
+    case 'repair': if (ship.hp < ship.maxHp) ship.hp++; else { ship.shieldUp = true; ship.shieldT = 0; }
+      ring(ship.x, ship.y, 50, '#7dff9a', 0.5); sparks(ship.x, ship.y, 12, '#7dff9a', 140); sfx.pickup(); break;
+    case 'shards': { const n = P.n || 12;
+      for (let i = 0; i < n; i++) { const kk = (i - (n - 1) / 2) / n; bolts.push({ x: ship.x + 12, y: ship.y, vx: 300, vy: kk * 520, ang: kk * 0.9, dmg: dmg * 1.4, lv: Math.max(2, BLV), pierce: 0, skip: null, dead: false, as: null, tgt: null, ta: 0, home: true, life: 2.8, wk: 'homing', pb: false }); }
+      ring(ship.x, ship.y, 46, '#b9a6ff', 0.4); sfx.shoot(); break; }
+  }
+  floatText(tt('pw_' + k), ship.x + 30, ship.y - 42, '#9ff0ff', 16, true);
+  return true;
+}
 function doSuper() {
   if (st !== 'play' || !ship || !ship.alive || beamT > 0 || superF < 1 || duelSafe()) return false;
   superF = 0; superWasFull = false; beamMax = Math.max(0.5, S.superDur || 2.2); beamT = beamMax; run.supers++; run.beamKills = 0;
@@ -1457,7 +1495,7 @@ const RV_YMIN = 50, RV_YMAX = 300, LANES = [80, 160, 240, 320];
 // hit radii shared with art.js (ENEMY_R: pellet 6, dart 5, slug 9, mine 11, drone 10, plate 13, laser half-height 11)
 const ER_DEF = { orb: 9, pellet: 6, dart: 5, slug: 9, mine: 11, drone: 10, plate: 13, laser: 11 };
 const ER = k => (A.ENEMY_R && A.ENEMY_R[k]) || ER_DEF[k] || 6;
-const bossCardT = 2.5;
+const bossCardT = 1.7;
 function rivalData(rid) {
   const list = Array.isArray(M.RIVALS) ? M.RIVALS : [];
   if (typeof rid === 'number') return list[rid - 1] || null; // __game.duel(1..10)
@@ -1490,7 +1528,7 @@ function bossDone() {
   run.bossFixed.push(id); run.bossTime = run.fightTime != null ? run.fightTime : run.fightT;
   rv = null; run.boss = null; run.ds = null; run.R = null; run.rid = null;
   eshots.length = emobs.length = elasers.length = 0;
-  run.frozen = false; run.meteorsOff = 0; run.fillerMul = 1;
+  run.frozen = false; run.meteorsOff = final ? 0 : 1e9; run.fillerMul = final ? 1 : 0;   // v3.6: after the guard the lane stays clear for the giant
   safe(UI.setBoss, null);
   if (final) { run.elapsed = run.L.dur; run.ending = true; run.endT = 0; }
 }
@@ -1502,7 +1540,7 @@ const BX = {
   home: () => rvHome(), fight: () => !!(run && run.ds === 'fight'), harmless: () => !!(run && run.AS && (run.AS.noDamage || run.AS.bossHarmless)),
   dmg: () => (S && S.dmg || 1) * (S && S.duelBolt || 1),
   aim: (x, y) => Math.atan2(ship.y - y, ship.x - x),
-  tele: base => Math.max(0.45, base + ((run.AS && run.AS.warnPlus) || 0) * 0.6 + (run.plan && run.plan.hard ? -0.15 : 0)),
+  tele: base => Math.max(0.45, base * WK() + ((run.AS && run.AS.warnPlus) || 0) * 0.6 + (run.plan && run.plan.hard ? -0.15 : 0)),
   shot: (k, x, y, a, v, o) => shot(k, x, y, a, v, o),
   later: (d, fn) => { if (rv) rv.q.push({ d, fn: () => { if (rv && st === 'play') fn(); } }); },
   mob: (kind, x, y, a = {}) => { if (emobs.length >= 24) return; const life = a.life || 6; emobs.push({ kind, x, y: clamp(y, 20, H - 20), ang: Math.PI, v: a.v || 100, turn: a.turn || 1.2, life, max: life, hp: a.hp || 2, r: ER(kind), flash: 0, dead: false, beepT: 0.2 }); if (kind === 'mine') sfx.mine(); },
@@ -1510,19 +1548,21 @@ const BX = {
   hurt: () => hurtShip(1, 'boss'),
   // v3.4: what the boss brain needs: its own voice, the phase attacks, area blasts, a pull on the ship
   rvSay: k => { const s2 = line(k); if (s2) rvSay(s2); }, talking: () => !!(rv && rv.sayT > 0),
-  atk: a => fireAtk(a), zone: (x, y, r, warn) => addZone(clamp(x, 40, W * 0.5), clamp(y, Y_MIN, Y_MAX), r, warn, rv.x, rv.y),
+  atk: a => fireAtk(a), zone: (x, y, r, warn) => addZone(clamp(x, 40, W * 0.7), clamp(y, Y_MIN, Y_MAX), r, warn, rv.x, rv.y),
   pull: (vx, vy, dt) => { if (!ship.alive) return; ship.tx = clamp((ship.tx || ship.x) + vx * dt, X_MIN, xMax()); ship.ty = clamp(ship.ty + vy * dt, Y_MIN, Y_MAX); },
   weapon: () => ship && ship.weapon ? ship.weapon.kind : null, xMax: () => xMax(), enraged: () => !!(run && run.enraged),
   dmgRival: (d, src) => damageRival(d, src),
   // v3.5: the giants send out workers of their family and throw shock rings
+  restK: () => Math.pow((run && run.threat) || 1, -0.35),
+  bossAtk: () => (run && run.plan && run.plan.bossAtk) || 1,   // v3.6: a stronger ship gets less rest between boss moves
   kin: () => { let n = 0; for (const o of objs) if (!o.dead && o.minion) n++; return n; },
-  brood: (x, y) => {
+  brood: (x, y, elite) => {
     y = clamp(y, Y_MIN + 10, Y_MAX - 10);
-    if (CUR().attacks > 0 && !(run.AS && run.AS.noDamage)) makeRobot({ minion: true, x, y, sx: rnd(W * 0.46, W * 0.62), hpK: 0.5, life: 12 });
+    if (CUR().attacks > 0 && !(run.AS && run.AS.noDamage)) makeRobot({ minion: true, elite: !!elite, x, y, sx: rnd(W * 0.7, W * 0.8), hpK: 0.5, life: 12 });
     else { const o = makeJunk('drone', x, y); o.hp = 2 * (run.hpMul || 1); o.vx = -(run.L.speed || 110) * 1.3; o.st = 'in'; o.by = clamp(y + rnd(-70, 70), Y_MIN + 30, Y_MAX - 30); o.ph = rnd(0, 6); o.move = squadMove; o.squad = true; o.minion = true; kinLook(o); objs.push(o); }
     smoke(x, y, 2, '#6d6a80');
   },
-  gapRing: (x, y) => { rings.push({ x, y, r: 60, v: 215, a: Math.atan2(ship.y - y, ship.x - x) + rnd(-0.5, 0.5), w: 0.46, t: 0, warn: Math.max(0.6, 0.95 + ((run.AS && run.AS.warnPlus) || 0) * 0.6), ph: 'warn', hit: false, dead: false }); sfx.laserWarn(); },
+  gapRing: (x, y) => { rings.push({ x, y, r: 60, v: 215, a: Math.atan2(ship.y - y, ship.x - x) + rnd(-0.5, 0.5), w: 0.46, t: 0, warn: Math.max(0.55, 0.95 * WK() + ((run.AS && run.AS.warnPlus) || 0) * 0.6), ph: 'warn', hit: false, dead: false }); sfx.laserWarn(); },
   addScore: (n, x, y) => addKill(n, x, y),
   coin: (x, y) => { const p = addPick('coin', x, y, 1); if (p) p.vx = -rnd(40, 120); },
   sparks: (...a) => sparks(...a), ring: (...a) => ring(...a), smoke: (...a) => smoke(...a), explode: (...a) => explode(...a), shake: a => shake(a),
@@ -1551,7 +1591,7 @@ function startDuel(rid, quiet = false) {
   const J = (M.JOURNEYS || []).find(j => j.id === R.theme) || M.JOURNEYS[0];
   const RG = safe(M.rigOf, R.id);
   run = newRun({ mode: 'duel', rid, R, J, ji: RG ? RG.j : journeyIndex(R.need), L: { speed: 130, dur: 1, hp: 1, coin: 1, pick: 1, mix: {} }, ds: 'intro', dsT: 0, fightT: 0, last: false,
-    hpMul: 1, coinMul: 1, pickMul: 1, warn: 1.1, enraged: false });
+    hpMul: 1, coinMul: 1, pickMul: 1, warn: 1.1, enraged: false, threat: 1 });
   beginRun();
   const dk = safe(M.duelK, R) || 1;
   makeRival(dk > 1 ? Object.assign({}, R, { hp: Math.round(R.hp * dk), par: Math.round((R.par || 60) * dk) }) : R);
@@ -1576,7 +1616,7 @@ function makeRival(R) {
 }
 // ---------------------------------------------------------------------------------------------
 // v3.1 real bosses: a rig of parts and guards around the rival core (meta.js BOSS_RIG)
-const rvHome = () => { const base = W - 120 - (rv && rv.rigDx || 0); return rv && rv.adv ? clamp(W * 0.62, ship.x + 200, base) : base; };
+const rvHome = () => { const base = W - 120 - (rv && rv.rigDx || 0); return rv && rv.adv ? clamp(W * 0.78, ship.x + 200, base) : base; };
 function rigUp(R) {
   const rig = !R.guardian && safe(M.rigOf, R.id); rv.parts = null; rv.guards = null; rv.rig = null; rv.ymin = RV_YMIN; rv.ymax = RV_YMAX;
   rv.adv = false; rv.desp = false; rv.guardT = 0; rv.B = null; rv.aimY = null; rv.rigDx = 0;
@@ -1605,7 +1645,7 @@ function rigUp(R) {
 // v3.3: a styled boss (js/bosses.js) — bigger body for the journey ends, the style's own reach decides where it can move
 function rigStyle(R, sty) {
   if (!R.guardian) {
-    if (R.giant) { rv.s = 1; rv.r = R.giant; } else { rv.s = safe(M.styleScale, R.id) || 1.3; rv.r = (R.r || 34) * rv.s; }
+    if (R.giant) { rv.s = M.GIANT_S || 1; rv.r = R.giant * rv.s; } else { rv.s = safe(M.styleScale, R.id) || 1.3; rv.r = (R.r || 34) * rv.s; }
     safe(A.bakeRival, rv.art, rv.s);
     const pts = typeof A.rivalPoints === 'function' ? safe(A.rivalPoints, rv.art) : null;
     if (pts && pts.muzzle) rv.mu = [pts.muzzle[0] * rv.s, pts.muzzle[1] * rv.s];
@@ -1614,7 +1654,7 @@ function rigStyle(R, sty) {
   rv.B = BS.make(sty, rv, R.stage === 1, R.stage || (R.guardian ? 1 : 3)); if (!rv.B) return;
   styleBounds();
 }
-function styleBounds() { const G = rv.R.giant ? rv.R.fit || [0, 0] : [0, 0], e = Math.max(BS.ext(rv.B, rv), G[1]); rv.ymin = clamp(Y_MIN + e - 12, 60, 200); rv.ymax = clamp(Y_MAX - e + 12, 200, 340); rv.rigDx = Math.max(0, e - 100, G[0] - 112); }
+function styleBounds() { const gs = rv.s || 1, G = rv.R.giant && rv.R.fit ? [rv.R.fit[0] * gs, rv.R.fit[1] * gs] : [0, 0], e = Math.max(BS.ext(rv.B, rv), G[1]); rv.ymin = clamp(Y_MIN + e - 12, 60, 200); rv.ymax = clamp(Y_MAX - e + 12, 200, 340); rv.rigDx = Math.max(0, e - 100, G[0] - 112); }
 function addGuard() {
   if (!rv || !rv.guards || rv.guards.length >= rv.guardN) return;
   const hp = Math.max(4, rv.max * 0.035);
@@ -1652,15 +1692,15 @@ function partFire(p) {
     else { const n = a.n || 1; for (let i = 0; i < n; i++) rv.q.push({ d: i * 0.14, fn: () => { if (p.dead) return; const b2 = Math.atan2(ship.y - p.y, ship.x - p.x); shot('pellet', p.x + Math.cos(b2) * 22, p.y + Math.sin(b2) * 22, b2, v); } }); }
     sfx.eshot();
   } else if (p.kind === 'arm') {
-    const warn = Math.max(0.6, 1.15 * ((C.tele || 1) || 1) + ((run.AS && run.AS.warnPlus) || 0) * 0.6);
+    const warn = Math.max(0.55, 1.15 * (C.tele || 1) * WK() + ((run.AS && run.AS.warnPlus) || 0) * 0.6);
     if (k === 'ring') { const off = rnd(-0.55, 0.55); rings.push({ x: p.x, y: p.y, r: 60, v: a.v || 210, a: Math.atan2(ship.y - p.y, ship.x - p.x) + off, w: a.w || 0.45, t: 0, warn: warn * 0.8, ph: 'warn', hit: false, dead: false }); sfx.laserWarn(); }
-    else { const n = a.n || 2, r = a.r || 50; addZone(ship.x, ship.y, r, warn, p.x, p.y); for (let i = 1; i < n; i++) { const ang = rnd(0, TAU), d = rnd(70, 140); addZone(clamp(ship.x + Math.cos(ang) * d, 40, W * 0.55), clamp(ship.y + Math.sin(ang) * d, Y_MIN, Y_MAX), r, warn + i * 0.12, p.x, p.y); } sfx.mine(); }
+    else { const n = a.n || 2, r = a.r || 50; addZone(ship.x, ship.y, r, warn, p.x, p.y); for (let i = 1; i < n; i++) { const ang = rnd(0, TAU), d = rnd(70, 140); addZone(clamp(ship.x + Math.cos(ang) * d, 40, W * 0.72), clamp(ship.y + Math.sin(ang) * d, Y_MIN, Y_MAX), r, warn + i * 0.12, p.x, p.y); } sfx.mine(); }
   } else if (p.kind === 'hangar') {
     let alive = 0; for (const o of objs) if (!o.dead && o.minion) alive++;
     const cap = Math.max(2, (C.tokens || 2) + 1), early = (run.ji | 0) < 2 || !(C.attacks > 0);
     for (let i = 0; i < (a.n || 1) && alive < cap; i++, alive++) {
       if (early) { const o = spawnKind(i % 2 ? 'drone' : 'rockM', clamp(p.y + rnd(-10, 10), Y_MIN, Y_MAX)); if (o) { o.x = p.x - 10; o.vx = -(run.L.speed || 130) * 1.1; o.minion = true; o.flash = 0.8; } }
-      else makeRobot({ minion: true, x: p.x - 10, y: p.y, sx: rnd(W * 0.46, W * 0.6), hpK: 0.55, life: 12 });
+      else makeRobot({ minion: true, x: p.x - 10, y: p.y, sx: rnd(W * 0.7, W * 0.8), hpK: 0.55, life: 12 });
     }
     if (rv.guards && rv.guards.length < rv.guardN) addGuard();
     p.tell = 1; smoke(p.x, p.y, 2, '#6d6a80'); sfx.plate();
@@ -1760,7 +1800,7 @@ function damageRival(d, src) {
   // every 10 % of HP lost drops DROPS.duel.per10 coins at the rival
   const want = Math.min(10, Math.floor((1 - rv.hp / rv.max) * 10 + 1e-6)), per = (DROPS.duel && DROPS.duel.per10) || 3;
   while (rv.drops < want) { rv.drops++; for (let i = 0; i < per; i++) { const p = addPick('coin', rv.x - rv.r * 0.6, rv.y + rnd(-10, 10), 1); if (p) p.vx = -rnd(60, 160); } }
-  if (rv.hp <= 0) beginFixed();
+  if (rv.hp <= 0) { if (rv.R.giant && !rv.form2 && !debug.noForm2) beginForm2(); else beginFixed(); }
   else if (next && rv.hp <= floor) beginShift();
   return dealt;
 }
@@ -1785,6 +1825,35 @@ function beginShift() {
   rvSay(line('rv_' + rv.id + '_taunt'));
   sfx.rivalPhase(); shake(6); ring(rv.x, rv.y, rv.r * 2.4, '#ff6a5a', 0.6); sparks(rv.x, rv.y, 16, '#ffb3a0', 200);
   mood('alert', 1.2);
+}
+// v3.6: a giant does not give up at zero. It swells into a second form with a fresh bar and fights harder.
+function beginForm2() {
+  rv.form2 = true; run.ds = 'shift'; run.dsT = -1.0; rv.invT = 2.4; rv.stunT = 0; rv.ram = null;
+  clearEnemyFire(); zones.length = sweeps.length = rings.length = 0;
+  for (const o of objs) if (!o.dead && o.minion) { o.dead = true; smoke(o.x, o.y, 2, '#6d6a80'); }
+  const k = M.FORM2_S || 1.15, soft = !!(run.AS && (run.AS.noDamage || run.AS.bossHarmless));
+  rv.grow = { t: 0, s0: rv.s || 1, s1: (rv.s || 1) * k, r0: rv.r, r1: rv.r * k };
+  rv.max = Math.round(rv.max * (soft ? 0.4 : 0.5)); rv.hp = rv.max; rv.drops = 5; RIVH.id = null;
+  if (rv.B) BS.form2(rv.B, rv);
+  safe(UI.banner, tt('f_form2', 'SECOND FORM'), tt('bc_q_' + rv.id, rvName(rv.id)), 2200);
+  rvSay(tt('bq_form2', 'I am not finished!'));
+  say('bot_form2', true); mood('alert', 2.5);
+  play('boomL', 0.8, 0.8); sfx.rivalPhase(); shake(12); hitStop = 0.12;
+  ring(rv.x, rv.y, rv.r * 3, '#ff6a5a', 0.8); sparks(rv.x, rv.y, 30, '#ffb3a0', 260);
+  if (st === 'play') { later2(0.8, () => { const p = addPick('repair', rv ? rv.x - rv.r - 30 : W * 0.6, 200, 1); if (p) p.vx = -150; }); later2(1.6, () => makeCarrier(Y_MIN + 60)); }
+}
+function growForm(dt) {
+  const g = rv.grow; if (!g) return;
+  g.t = Math.min(1, g.t + dt / 1.4); const e = easeOut(g.t);
+  rv.s = g.s0 + (g.s1 - g.s0) * e; rv.r = g.r0 + (g.r1 - g.r0) * e;
+  if (g.t >= 1) {
+    rv.grow = null; safe(A.bakeRival, rv.art, rv.s);
+    const pts = typeof A.rivalPoints === 'function' ? safe(A.rivalPoints, rv.art) : null;
+    if (pts && pts.muzzle) rv.mu = [pts.muzzle[0] * rv.s, pts.muzzle[1] * rv.s];
+    if (pts && pts.hatch) rv.ha = [pts.hatch[0] * rv.s, pts.hatch[1] * rv.s];
+    if (rv.B) { BS.grown(rv.B, rv, g.r1 / g.r0); styleBounds(); }
+    ring(rv.x, rv.y, rv.r * 2.2, '#ffd27a', 0.5);
+  }
 }
 function beginFixed() {
   run.ds = 'fixed'; run.dsT = 0; rv.hp = 0; rv.invT = 0; rv.stunT = 0; rv.ram = null; rv.blink = null; rv.pulseT = 0;
@@ -1861,7 +1930,7 @@ function shot(kind, x, y, ang, v, extra) {
 }
 const aimAng = (x, y) => Math.atan2(ship.y - y, ship.x - x);
 function addLaser(y, warn, dur, aimed) {
-  const L = { y: clamp(y, 30, H - 30), warn: Math.max(0.3, warn), dur: dur || 0.6, t: 0, ph: 'warn', hit: false, dead: false, x0: muzzle() };
+  const L = { y: clamp(y, 30, H - 30), warn: Math.max(0.3, warn * WK()), dur: dur || 0.6, t: 0, ph: 'warn', hit: false, dead: false, x0: muzzle() };
   elasers.push(L); if (aimed) rv.hold = L;
   sfx.laserWarn();
 }
@@ -1894,7 +1963,7 @@ function fireAtk(a) {
       for (let i = 0; i < n; i++) { const o = spawnKind(pick(kinds), clamp(rv.y + rv.ha[1] + (i - (n - 1) / 2) * 44, 40, 360)); if (!o) continue;
         o.x = rv.x + rv.ha[0]; o.by = o.y; o.vx = -(a.v || 130) * rnd(0.9, 1.1); o.summon = true; o.flash = 0.8; }
       smoke(rv.x + rv.ha[0], rv.y + rv.ha[1], 2, '#6d6a80'); break; }
-    case 'ram': if (rv.B) break; if (!rv.ram) rv.ram = { ph: 'warn', t: 0, warn: a.warn != null ? a.warn : 1.0, v: a.v || 650, back: a.back || 300, y: rv.y, hit: false, stop: clamp(ship.x - 70, 40, 150) }; break;
+    case 'ram': if (rv.B) break; if (!rv.ram) rv.ram = { ph: 'warn', t: 0, warn: (a.warn != null ? a.warn : 1.0) * WK(), v: a.v || 650, back: a.back || 300, y: rv.y, hit: false, stop: clamp(ship.x - 70, 40, 150) }; break;
     case 'pulse': rv.pulseT = a.dur || 2; break;
   }
 }
@@ -1943,6 +2012,7 @@ function updateRival(dt) {
     run.fightT += dt;
     if (!run.enraged && run.fightT >= 2 * (rv.R.par || 60)) { run.enraged = true; floatText(tt('f_enrage'), rv.x - 40, rv.y - rv.r - 30, '#ff8a5a', 17, true); safe(UI.note, tt('f_enrage')); sfx.rivalPhase(); }
   }
+  if (rv.grow) growForm(dt);
   if (run.ds === 'shift') { run.dsT += dt; if (run.dsT >= 1.2) { run.ds = 'fight'; run.dsT = 0; } }
   if (rv.stunT > 0) rv.stunT -= dt;
   if (rv.sh && !rv.sh.up) { rv.sh.t -= dt; if (rv.sh.t <= 0) { rv.sh.up = true; rv.sh.hp = rv.sh.max; ring(rv.x, rv.y, rv.r + 18, '#9ff0ff', 0.4); sfx.shieldHit(); } }
@@ -2198,7 +2268,9 @@ function sim(dt) {
   if (st === 'dead') { run.deadT += dt; if (run.deadT >= 1.6) endRun(false); }
   if (st === 'arrive') { arrive.T += dt; if (arrive.T >= arrive.dur) endRun(true); }
 
-  updateShip(dt);
+  // v3.6 slow time (a costume power): the world runs at 45%, the ship does not
+  const sdt = dt; if (run.slowT > 0) { run.slowT -= dt; dt *= 0.45; }
+  updateShip(sdt);
   updateObjs(dt);
   if (run.flare) updateFlare(dt);
   updateCombat(dt);
@@ -2206,9 +2278,9 @@ function sim(dt) {
   if (rv) updateRival(dt);
   updateEnemies(dt);
   if (!duel) updateMeteors(dt);
-  updatePicks(dt);
-  updateBot(dt);
-  updateParts(dt);
+  updatePicks(sdt);
+  updateBot(sdt);
+  updateParts(sdt);
   if (comboT > 0) { comboT -= dt; if (comboT <= 0) { comboN = 0; mult = 1; lastMult = 1; } }
   run.coinChainT -= dt;
   shakeA *= Math.exp(-9 * dt); if (shakeA < 0.2) shakeA = 0;
@@ -2230,7 +2302,8 @@ function updateShip(dt) {
     const k = (S.follow || 10) > 1.5 ? S.follow : (S.follow || 0.2) * 60; // rate constant (1/s)
     ship.py = ship.y; ship.px = ship.x;
     let step = (ship.ty - ship.y) * (1 - Math.exp(-k * dt));
-    const vmax = (S.maxVy || 700) * dt; if (step > vmax) step = vmax; else if (step < -vmax) step = -vmax;
+    if (ship.pwCd > 0) ship.pwCd -= dt; if (ship.dashT > 0) ship.dashT -= dt;
+    const vmax = (S.maxVy || 700) * dt * (ship.dashT > 0 ? 4 : 1); if (step > vmax) step = vmax; else if (step < -vmax) step = -vmax;
     ship.y += step;
     let sx = (ship.tx - ship.x) * (1 - Math.exp(-k * dt)); const hmax = vmax * 0.85; if (sx > hmax) sx = hmax; else if (sx < -hmax) sx = -hmax;
     ship.x += sx;
@@ -2336,6 +2409,8 @@ function updateObjs(dt) {
   const shR = shipR() * hurtK(), big = (run.AS && run.AS.bigHitbox > 0) ? run.AS.bigHitbox : 1;
   for (let i = 0; i < bolts.length; i++) {
     const b = bolts[i];
+    // v3.6 point-blank: a bolt is 30% stronger over its first 230 px, so flying close is worth the risk
+    if (b.pb === undefined) { b.pb = !b.home; b.x0 = b.x; if (b.pb) b.dmg *= PB_K; } else if (b.pb && b.x - b.x0 > PB_D) { b.pb = false; b.dmg /= PB_K; }
     b.x += b.vx * dt; b.y += b.vy * dt;
     if (b.as !== null && rv) { b.as += clamp(((rv.aimY != null ? rv.aimY : rv.y) - b.y) * 2 - b.as, -40, 40) * dt * 8; b.y += b.as * dt; b.ang = Math.atan2(b.vy + b.as, b.vx); } // duel aim assist
     else if (b.tgt && !b.tgt.dead && b.tgt.x > b.x) { b.ta += clamp((b.tgt.y - b.y) * 3 - b.ta, -60, 60) * dt * 8; b.y += b.ta * dt; b.ang = Math.atan2(b.vy + b.ta, b.vx); } // v3 Moon auto-aim
@@ -2825,12 +2900,14 @@ function hudNow() {
   o.hp = ship.hp; o.maxHp = ship.maxHp; o.score = Math.round(run.score); o.coins = run.coins;
   o.prog = duel ? 0 : Math.round(clamp(run.elapsed / run.L.dur, 0, 1) * 200) / 200;
   o.superF = Math.round(superF * 100) / 100; o.shield = Math.round(sh * 50) / 50; o.combo = mult;
+  o.power = S.power || 'dash'; o.powerF = ship.pwCd > 0 ? Math.round(clamp(1 - ship.pwCd / (ship.pwMax || 1), 0, 0.99) * 50) / 50 : 1;
   o.rapid = ship.rapidT > 0 ? Math.round(ship.rapidT / 6 * 50) / 50 : 0;
   o.weapon = ship.weapon ? ship.weapon.kind : null; o.weaponLv = ship.weapon ? ship.weapon.lv || 1 : 0; o.weaponF = ship.weapon ? Math.round(clamp(ship.weapon.t / ship.weapon.max, 0, 1) * 50) / 50 : 0; o.wings = wings.length;
   o.duel = duel; o.rival = null;
   if (rv) {
     const r = RIVH;
-    if (r.id !== rv.id) { r.id = rv.id; r.name = rvName(rv.id); r.max = rv.max; r.phases = (rv.R.phases || []).length || 1; r.ticks = (rv.R.phases || []).slice(1).map(p => p.at); }
+    if (r.id !== rv.id) { r.id = rv.id; r.name = rvName(rv.id); r.max = rv.max; r.phases = (rv.R.phases || []).length || 1; r.ticks = rv.form2 ? [] : (rv.R.phases || []).slice(1).map(p => p.at); }
+    r.form = rv.form2 ? 2 : 1;
     r.hp = Math.ceil(rv.hp); r.phase = rv.ph; r.stun = rv.stunT > 0;
     r.partsN = rv.parts ? rv.parts.length : 0; r.parts = partsAlive(); r.guards = rv.guards ? rv.guards.length : 0; r.core = !!rv.parts && !shieldGenUp();
     r.shield = rv.sh && rv.sh.up ? Math.round(clamp(rv.sh.hp / rv.sh.max, 0, 1) * 50) / 50 : 0;
@@ -2906,6 +2983,7 @@ const hooks = {
     goMenu();
   },
   onSuper() { doSuper(); },
+  onPower() { usePower(); },
   onMute() { unlockAudio(); setMuted(!muted); safe(M.setSetting, 'muted', muted); return muted; },
   isMuted() { return muted; },
   onFps() { fpsCap = fpsCap === 30 ? 60 : 30; safe(M.setSetting, 'fps', fpsCap); nextDue = 0; fAcc = 0; fN = 0; slowWins = 0; return fpsCap; },
@@ -3019,6 +3097,8 @@ window.__game = {
 
     },
     // v3.5: the live world for test pilots (raw arrays: read, do not keep)
+    threat: () => run && run.threat,
+    power(k) { return usePower(k || (S && S.power) || 'dash'); },
     world: () => ({ objs, eshots, emobs, meteors, zones, sweeps, rings, elasers, picks, rv, ship, W, H, Y_MIN, Y_MAX }),
     stats: () => S, report: () => run && report(),
     sounds: () => Object.keys(SND), audio: () => actx && actx.state,

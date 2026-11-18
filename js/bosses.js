@@ -145,7 +145,7 @@ function startMove(B, rv, k, why) {
 }
 function restT(B, rv, M) {
   let r = typeof M.rest === 'function' ? M.rest(B, rv) : M.rest || 1.2;
-  if (B.lite) r *= 1.45; if (X.harmless()) r *= 1.25; if (rv.ph >= 2) r *= 0.8; if (B.br.low) r *= 0.8; if (X.enraged()) r *= 0.8;
+  if (B.lite) r *= 1.45; if (X.harmless()) r *= 1.25; if (B.form === 2) r *= 0.7; r *= X.restK() * (X.harmless() ? 1 : X.bossAtk()); if (rv.ph >= 2) r *= 0.8; if (B.br.low) r *= 0.8; if (X.enraged()) r *= 0.8;
   if (B.br.hitT < 1.5) r += 0.9;   // it just hit the player: a breath before the next one
   return r;
 }
@@ -183,6 +183,7 @@ const KIT = { icon: 'aim', lite: false, w: (B, rv) => ((rv.phase && rv.phase.atk
 function royal(B, rv) {
   const k0 = (rv.R && rv.R.royal) || 'zones', k = k0 === 'all' ? ['zones', 'ring', 'wall'][Math.floor(Math.random() * 3)] : k0, s = X.ship, fx = rv.x - rv.r * 0.7;
   X.shake(5); talk(B, 'bq_royal');
+  if (B.form === 2 && !B.chain) { B.chain = true; X.later(1.5, () => { royal(B, rv); B.chain = false; }); }   // second form: two blasts back to back
   if (k === 'ring') { X.gapRing(fx, rv.y); if (rv.ph >= 2) X.later(1.2, () => X.gapRing(fx, rv.y)); return 2.2; }
   if (k === 'wall') { X.atk({ k: 'wall', v: 170, gap: 100 }); if (rv.ph >= 1) X.later(1.4, () => X.atk({ k: 'wall', v: 170, gap: 100 })); return 2.5; }
   if (k === 'sting') { // a fan of darts that leaves the ship's own lane open, then one dart down that lane
@@ -196,8 +197,24 @@ function royal(B, rv) {
 const GIANT = {
   brood: { w: (B, rv) => X.kin() < 2 ? 1.6 : X.kin() < 4 ? 0.5 : 0,   // the hatch opens and the family's workers fly out
     go(B, rv, br) { br.k = 0; br.t2 = 0.6; X.sfx('plate'); talk(B, 'bq_brood'); },
-    step(B, dt, live, rv, br) { br.t2 -= dt; if (br.t2 <= 0) { br.k++; br.t2 = 0.6; X.brood(rv.x + (rv.ha ? rv.ha[0] : 0), rv.y + (rv.ha ? rv.ha[1] : 0)); } return br.k >= (rv.ph >= 1 ? 3 : 2); }, rest: 1.7 },
+    step(B, dt, live, rv, br) { br.t2 -= dt; if (br.t2 <= 0) { br.k++; br.t2 = 0.6; X.brood(rv.x + (rv.ha ? rv.ha[0] : 0), rv.y + (rv.ha ? rv.ha[1] : 0), B.form === 2 && br.k === 1); } return br.k >= (rv.ph >= 1 ? 3 : 2); }, rest: 1.7 },
   royal: { w: (B, rv) => rv.ph >= 1 ? 1.5 : 1, go(B, rv, br) { br.dur = royal(B, rv); }, step: (B, dt, live, rv, br) => br.mt > br.dur, rest: 1.5 },
+  // v3.6 second form only. Fury: four waves that fill the field and leave ONE safe lane, which moves every wave:
+  // a wall of shots with a gap, then the lanes themselves blow up except one, and again.
+  fury: { w: B => B.form === 2 ? 2 : 0,
+    go(B, rv, br) { br.k = 0; br.t2 = 0.5; br.safe = -1; talk(B, 'bq_fury', true); X.shake(7); X.sfx('laserWarn'); },
+    step(B, dt, live, rv, br) {
+      br.t2 -= dt; if (br.t2 > 0) return false;
+      if (br.k >= 4) return true;
+      if (br.k % 2 === 0) X.atk({ k: 'wall', v: 185, gap: 104 });
+      else {
+        const lanes = [72, 137, 202, 267, 332], s = X.ship, w = X.tele(1.25);
+        let safe = Math.floor(Math.random() * 5); if (safe === br.safe) safe = (safe + 2) % 5; br.safe = safe;
+        for (let i = 0; i < 5; i++) if (i !== safe) for (const dx of [-80, 0, 80]) X.zone(s.x + dx, lanes[i], 40, w);
+        X.sfx('mine');
+      }
+      br.k++; br.t2 = br.k >= 4 ? 1.1 : 1.35; return false;
+    }, rest: 2, max: 9 },
 };
 
 // ================================================================================================
@@ -414,7 +431,7 @@ const hornet = {
   init(B) { B.mode = 'perch'; B.ownMove = true; B.trail = []; B.mul = 1.5; B.jink = null; B.ly = 200; },
   plan(B, rv) { // an oval loop whose far turn is aimed at the ship (ahead of a moving ship from the second phase)
     const home = X.home(), s = X.ship, ld = rv.ph >= 1 && !B.lite ? 0.35 : 0;
-    const tx = B.lite ? Math.max(s.x + 50, X.W * 0.3) : clamp(s.x - 14, 46, X.W * 0.3), cy = clamp(s.y + (s.vy || 0) * ld, 140, 270);
+    const tx = B.lite ? Math.max(s.x + 50, X.W * 0.3) : clamp(s.x - 14, 46, X.W * 0.52), cy = clamp(s.y + (s.vy || 0) * ld, 140, 270);
     const rx = (home - tx) / 2, ry = Math.min(B.lite ? 95 : 130, cy - X.Y_MIN - 6, X.Y_MAX - 6 - cy);
     B.path = { cx: home - rx, rx, cy, ry, sd: Math.random() < 0.5 ? 1 : -1, y0: rv.y };
   },
@@ -548,7 +565,7 @@ const magnet = {
   toss(B, o, a, v) { o.dead = true; B.fly.push({ x: o.x, y: o.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: o.r, hp: hp1(1), rot: o.rot, seed: o.seed, flash: 0, dead: false }); },
   moves: {
     fling: { icon: 'bang',   // the armour leaves in a ring, so the gaps between pieces are the way through: its pick when the ship is close
-      w: () => X.ship.x > X.W * 0.22 ? 2.2 : 1,
+      w: () => X.ship.x > X.W * 0.35 ? 2.2 : 1,
       go(B, rv, br) { br.pre = magnet.coat(B, rv); br.tl = br.pre + X.tele(0.9); br.k = 0; },
       step(B, dt, live, rv, br) {
         if (br.mt < br.pre) return false;
@@ -562,7 +579,7 @@ const magnet = {
       },
       end(B) { B.pol = 'pull'; }, rest: (B, rv) => B.lite ? 2.6 : rv.ph >= 1 ? 1.6 : 2.2 },
     snipe: { icon: 'aim',   // one piece at a time, at the ship and ahead of it by turns: its pick when the ship hangs back
-      w: () => X.ship.x > X.W * 0.22 ? 1 : 2.2,
+      w: () => X.ship.x > X.W * 0.35 ? 1 : 2.2,
       go(B, rv, br) { br.pre = magnet.coat(B, rv); br.tl = br.pre + X.tele(0.7); br.cd = 0; br.k = 0; },
       step(B, dt, live, rv, br) {
         if (br.mt < br.pre) return false;
@@ -699,7 +716,7 @@ const search = {
     const sp = B.spot;
     if (sp) { // the spotter: it creeps round the cover and, if it gets a good look, swings the big beam straight onto the ship
       sp.flash = Math.max(0, sp.flash - dt * 6); sp.life -= dt; sp.ph += dt;
-      sp.x += ((sp.life > 0 ? X.W * 0.45 : X.W + 80) - sp.x) * Math.min(1, dt * 2.2); sp.y += clamp(s.y - sp.y, -75 * dt, 75 * dt);
+      sp.x += ((sp.life > 0 ? Math.max(X.W * 0.5, s.x + 190) : X.W + 80) - sp.x) * Math.min(1, dt * 2.2); sp.y += clamp(s.y - sp.y, -75 * dt, 75 * dt);
       if (sp.life > 0 && on) {
         sp.see = Math.abs(sp.y - s.y) < 30 ? sp.see + dt : Math.max(0, sp.see - dt * 2);
         if (sp.see > 0.7) { sp.see = 0; B.sy = s.y; if (B.cool <= 0) { B.st = 'track'; B.lock = Math.max(B.lock, need * 0.6); } icon(B, 'bang', 1); X.ring(s.x, s.y, 34, '#ffb347', 0.3); X.sfx('laserWarn'); }
@@ -963,7 +980,7 @@ const vortex = {
           br.pl.forEach((s, i) => {
             s.hot = false; if (!s.on) return; s.on = false; s.away = true; s.back = 0;
             const ty = i === 0 ? sh.y : i === 1 ? sh.y + (Math.abs(sh.vy || 0) > 30 ? sh.vy * 0.5 : 72) : sh.y - 72;
-            B.discs.push({ disc: true, s, x: s.x, y: s.y, tx: clamp(sh.x - 10, 50, X.W * 0.4), ty: clamp(ty, X.Y_MIN, X.Y_MAX), f: -i * 0.12, dur: B.lite ? 2.8 : 2.4, r: 14, hp: hp1(2), rot: 0, flash: 0, dead: false, hitS: false });
+            B.discs.push({ disc: true, s, x: s.x, y: s.y, tx: clamp(sh.x - 10, 50, X.xMax()), ty: clamp(ty, X.Y_MIN, X.Y_MAX), f: -i * 0.12, dur: B.lite ? 2.8 : 2.4, r: 14, hp: hp1(2), rot: 0, flash: 0, dead: false, hitS: false });
           });
           X.sfx('whoosh');
         }
@@ -991,6 +1008,7 @@ const vortex = {
     s.on = false; s.dead = true; s.back = 4.5; X.sparks(s.x, s.y, 8, '#b9a6ff', 140); X.sfx('plate'); X.addScore(10, s.x, s.y);
   },
   fixed(B) { B.rings = []; B.discs = []; B.pull = 0; },
+  grown(B, rv, k) { for (const g of B.rings) g.R *= k; B.far = (B.far || 0) + rv.r * (1 - 1 / k); },
   draw(B, c, layer, rv) {
     const t = X.t;
     if (layer === 'under') { // the current: faint swirling arcs, only while it is pulling the ship in
@@ -1119,7 +1137,7 @@ const builder = {
       go(B, rv, br) {
         const ys = [X.Y_MIN + 50, 205, X.Y_MAX - 50]; let y = ys[br.band.indexOf(Math.max(br.band[0], br.band[1], br.band[2]))];
         if (B.tur.some(T => Math.abs(T.y - y) < 40)) y = y > 205 ? ys[0] : ys[2];
-        B.tur.push({ tur: true, x: X.W * 0.56, y, r: 15, hp: hp1(5), f: 0, cd: 1.4, flash: 0, dead: false, seed: 0.5, rot: 0 }); X.sfx('plate'); X.smoke(X.W * 0.56, y, 3, '#8a86a0');
+        B.tur.push({ tur: true, x: X.W * 0.72, y, r: 15, hp: hp1(5), f: 0, cd: 1.4, flash: 0, dead: false, seed: 0.5, rot: 0 }); X.sfx('plate'); X.smoke(X.W * 0.72, y, 3, '#8a86a0');
       }, rest: 1.4 },
     shift: { icon: 'guard', w: (B, rv) => builder.hole(B) && builder.plan(B, rv) != null ? 1.4 : 0,   // slides a whole part of the wall in front of the tunnel, then every gun fires
       go(B, rv, br) { const y = builder.plan(B, rv); if (y != null) rv.dodge = { y, t: 1.6 }; br.k = 0; X.sfx('whoosh'); },
@@ -1193,7 +1211,7 @@ const hammer = {
     const top = X.Y_MIN - 6, bot = X.Y_MAX + 6, s = X.ship; B.mt -= dt;
     if (B.mode === 'raise') {
       const ty = B.side > 0 ? top : bot; B.hx += (B.col - B.hx) * Math.min(1, dt * 6); B.hy += (ty - B.hy) * Math.min(1, dt * 6);
-      if (B.fake && B.mt < 0.15) { B.fake = false; B.col = clamp(s.x + (s.vxp || 0) * 0.2, 70, X.W * 0.45); B.mt = X.tele(0.5); X.sfx('laserWarn'); talk(B, 'bq_feint'); icon(B, 'grin'); }   // the column jumps to where the ship ran
+      if (B.fake && B.mt < 0.15) { B.fake = false; B.col = clamp(s.x + (s.vxp || 0) * 0.2, 70, X.xMax()); B.mt = X.tele(0.5); X.sfx('laserWarn'); talk(B, 'bq_feint'); icon(B, 'grin'); }   // the column jumps to where the ship ran
       if (B.mt <= 0) { B.mode = 'slam'; B.f = 0; B.hit = false; if (!B.q) { const dx = s.x - B.col; B.dd = B.dd * 0.5 + (Math.abs(dx) > 20 ? Math.sign(dx) * 0.6 : 0); } }
     } else if (B.mode === 'slam') {
       B.f += dt / 0.2; const y0 = B.side > 0 ? top : bot, y1 = B.side > 0 ? X.Y_MAX - 22 : X.Y_MIN + 22;
@@ -1227,7 +1245,7 @@ const hammer = {
         B.q = false; B.side = p2 && Math.random() < 0.5 ? -1 : 1;   // 1: falls from the top, -1: rises from the floor
         let col = s.x + (s.vxp || 0) * 0.3;
         if (!B.lite && Math.abs(B.dd) > 0.8) { col += Math.sign(B.dd) * 32; if (!B.readSaid) { B.readSaid = true; if (talk(B, 'bq_read', true)) icon(B, 'eye', 1.6); } }   // it has seen which way the player runs
-        B.col = clamp(col + rnd(-12, 12), 70, X.W * 0.45); B.fake = p2 && Math.random() < 0.35;
+        B.col = clamp(col + rnd(-12, 12), 70, X.xMax()); B.fake = p2 && Math.random() < 0.35;
         B.mode = 'raise'; B.mt = X.tele(B.lite ? 1.4 : 1.05); X.sfx('laserWarn');
       },
       step: (B, dt, live, rv) => hammer.strike(B, dt, live, rv),
@@ -1239,13 +1257,13 @@ const hammer = {
         const s = X.ship;
         if (B.mode === 'row') {
           if (br.mt < br.tl - 0.3) B.row += (clamp(s.y + (rv.ph >= 1 ? (s.vy || 0) * 0.15 : 0), X.Y_MIN + 24, X.Y_MAX - 24) - B.row) * Math.min(1, dt * 6);
-          B.hx += (X.W * 0.56 - B.hx) * Math.min(1, dt * 6); B.hy += (B.row - B.hy) * Math.min(1, dt * 8);
+          B.hx += (X.W * 0.72 - B.hx) * Math.min(1, dt * 6); B.hy += (B.row - B.hy) * Math.min(1, dt * 8);
           if (br.mt >= br.tl) { B.mode = 'sweep'; B.hit = false; X.sfx('whoosh'); }
         } else if (B.mode === 'sweep') {
           B.hx -= (B.lite ? 520 : 720) * dt; B.hy = B.row;
           if (!B.hit && live && Math.abs(s.y - B.row) < 34 && Math.abs(s.x - B.hx) < 46) { B.hit = true; X.hurt(); }
           if (B.hx < 50) { B.mode = 'rebound'; X.shake(7); X.sfx('tank'); X.sparks(B.hx, B.hy, 12, '#ffcf6a', 200); }
-        } else if (B.mode === 'rebound') { B.hx += 420 * dt; if (B.hx >= X.W * 0.47) { B.mode = 'stuck'; B.mt = B.lite ? 2.2 : 1.6; } }
+        } else if (B.mode === 'rebound') { B.hx += 420 * dt; if (B.hx >= X.W * 0.62) { B.mode = 'stuck'; B.mt = B.lite ? 2.2 : 1.6; } }
         else if (B.mode === 'stuck') { B.mt -= dt; return B.mt <= 0; }
         return false;
       },
@@ -1294,7 +1312,7 @@ const hammer = {
     c.save(); c.fillStyle = stuck ? '#ffd23f' : '#3b3f52'; c.strokeStyle = INK; c.lineWidth = 2.5; c.beginPath(); c.arc(jx, jy, 11, 0, TAU); c.fill(); c.stroke(); c.restore();
     if (stuck) weakMark(c, jx, jy, 12, t, '#ffe066');
   },
-  draw2(B, c, layer) { if (layer === 'under' && B.mode === 'row') laneTell(c, B.row, X.W * 0.56, X.t, 32, B.br && B.br.tl ? clamp(B.br.mt / B.br.tl, 0, 1) : 1); },
+  draw2(B, c, layer) { if (layer === 'under' && B.mode === 'row') laneTell(c, B.row, X.W * 0.72, X.t, 32, B.br && B.br.tl ? clamp(B.br.mt / B.br.tl, 0, 1) : 1); },
 };
 
 export const STYLES = { clam, bubble, hornet, magnet, search, hide, vortex, builder, hammer };
@@ -1308,7 +1326,7 @@ function adaptSeq(seq) {
   for (const k of seq) if (pool.length < 3 && !pool.includes(k)) pool.push(k);
   return { seq: pool.reverse(), studied: true };
 }
-const KEEP = ['name', 'S', 'seq', 'lite', 'stage', 't', 'br', 'studied'];   // (a style's own fields, like the vortex's B.far, are rebuilt by its init)
+const KEEP = ['name', 'S', 'seq', 'lite', 'stage', 'form', 't', 'br', 'studied'];   // (a style's own fields, like the vortex's B.far, are rebuilt by its init)
 const FRESH = S => ({ tg: [], ownMove: false, quiet: true, mul: 1, open: true, atkK: 1, hint: S.hint, noIcon: false });   // quiet: nothing fires on a timer, the brain calls every shot
 export function make(style, rv, lite, stage = lite ? 1 : 2) {
   const ad = Array.isArray(style) ? adaptSeq(style) : null, seq = ad ? ad.seq : null, name = seq ? seq[0] : style, S = STYLES[name];
@@ -1378,6 +1396,9 @@ export function shift(B, rv) {
   else if (B.S.shift) B.S.shift(B, rv);
   if (B.br) { B.br.rest = 1.6; B.br.next = null; }
 }
+// v3.6: the giant's second form
+export function form2(B, rv) { abortMove(B, rv); B.form = 2; if (B.br) { B.br.rest = 2.2; B.br.low = false; B.br.heatCd = 4; } }
+export function grown(B, rv, k) { if (B.S.grown) B.S.grown(B, rv, k); }
 export function fixed(B, rv) {
   abortMove(B, rv);
   if (B.S.fixed) B.S.fixed(B, rv);
