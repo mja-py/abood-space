@@ -159,6 +159,25 @@ a finale that is a real second battle, more horizontal room, and characters that
   - The pickers show the power or class on every card.
 - **Test pilot.** `tools/pilot.js` flies legs by itself and reports hits, causes and fight lengths (see Testing).
 
+## Menus that fit the device (v3.7)
+
+Played on a Red Magic 8S the menu scrolled and some buttons showed symbol characters. Now:
+
+- **Nothing scrolls.** `js/ui.js` measures the screen it is on:
+  - `pageRow()` shows as many cards of a row as fit (journeys, costumes, ship paints, rivals), with drawn arrows and a
+    swipe for the rest; a picker row uses free height for a second or third row of cards.
+  - `pageSheet()` deals the blocks of a sheet (missions, badges, how to play) onto pages no taller than the room this
+    screen has: grids split card by card, a heading never ends a page, long help texts become short cards (`chunks()`).
+    The page arrows and `2 / 5` sit in the sheet's header.
+  - `fitPanels()` scales any panel that would still be taller or wider than the screen (menu, sheets, results, pause,
+    gifts), so nothing is ever cut off. Overlays no longer scroll.
+  - Everything is rebuilt on resize and rotation. Narrow landscape phones no longer fall into the portrait layout.
+- **Drawn art, no symbol characters.** The six menu tiles carry small canvas pictures in the game's art (Usta, the pilot
+  in the current costume, a clipboard, the next rival, a medal, Nabeeh) and Launch shows the player's own ship. Check
+  marks, arrows and stars that were typed as characters (`✓ → ★ ▲ ▼`) are now drawn icons or plain words.
+- Checked at 568×320, 667×375, 740×340, 902×350, 902×406 and 1180×820 in English and Arabic: no scrollable area, no
+  panel off screen.
+
 ## Screens and layout (v3.2)
 
 - **One play-field shape everywhere.** The field is always about 2.15:1, the shape of a phone held sideways. iPads,

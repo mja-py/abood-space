@@ -933,7 +933,7 @@ function director(dt) {
 // v3.1 leg modifiers that change over time: the magnetic field flips, the solar wind gusts
 function weather(dt) {
   const m = run.mods; if (!m || !m.length) return;
-  if (m.includes('magnet')) { run.magT += dt; if (run.magT > 11) { run.magT = 0; run.magDir = -run.magDir; floatText(run.magDir > 0 ? '▼' : '▲', ship.x + 30, ship.y - 40, '#9fb4ff', 20); } }
+  if (m.includes('magnet')) { run.magT += dt; if (run.magT > 11) { run.magT = 0; run.magDir = -run.magDir; floatText(tt(run.magDir > 0 ? 'f_magDown' : 'f_magUp'), ship.x + 30, ship.y - 40, '#9fb4ff', 18, true); } }
   if (m.includes('wind')) { run.windT += dt; run.wind = 22 * Math.sin(run.windT * TAU / 14); }
 }
 function drawWeather(c) {
@@ -2262,7 +2262,7 @@ function sim(dt) {
     } else { runBeats(dt); if (!run.boss) { spawner(dt); meteorSpawner(); } }
     if (!bot.startSay || (bot.startSay -= dt) <= 0) { if (bot.startSay !== null) { bot.startSay = null; say('bot_start', true); } }
     // ★3 reached (the score goal of DESIGN §4.3); settlement decides the stars
-    if (!run.starSaid && L.star > 0 && run.score >= L.star) { run.starSaid = true; floatText('★★★', ship.x + 110, ship.y - 46, '#ffe066', 22); sfx.pickup(); }
+    if (!run.starSaid && L.star > 0 && run.score >= L.star) { run.starSaid = true; floatText(tt('f_3stars', '3 stars!'), ship.x + 110, ship.y - 46, '#ffe066', 20, true); sfx.pickup(); }
   }
   if (st === 'play' && duel) run.elapsed += dt;
   if (st === 'dead') { run.deadT += dt; if (run.deadT >= 1.6) endRun(false); }

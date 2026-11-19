@@ -485,6 +485,153 @@ function dragScroll(row) {
   addEventListener('pointerup', () => { down = false; setTimeout(() => { row.moved = false; }, 0); });
   row.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { row.scrollLeft += lang() === 'ar' ? -e.deltaY : e.deltaY; e.preventDefault(); } }, { passive: false });
 }
+// =============================================================================================
+// v3.7 nothing scrolls. Rows of cards and whole sheets are cut into pages that fit THIS screen: the sizes are measured on the
+// device, never guessed, and the pages are rebuilt when the screen changes. Arrows (drawn) and a swipe turn the page.
+const PG = {}, PGS = {};
+function pgBtn(dir, dis, go) {
+  const b = el('button', 'pg-btn ' + dir); b.type = 'button'; b.innerHTML = svgI('arrow'); b.disabled = !!dis;
+  b.setAttribute('aria-label', TT(dir === 'prev' ? 'pg_prev' : 'pg_next', dir === 'prev' ? 'السابق' : 'التالي', dir === 'prev' ? 'Previous' : 'Next'));
+  b.onclick = e => { e.stopPropagation(); if (b.disabled) return; hook('sfx', 'tick'); go(); };
+  return b;
+}
+// a row of cards: as many as fit across, with an arrow at each end when there are more
+function pageRow(strip, key, selIdx, rerender) {
+  const kids = [...strip.children].filter(k => !k.classList.contains('pg-btn')); strip.classList.add('pg-row'); strip.classList.remove('pg-on'); strip.scrollLeft = 0;
+  const W0 = strip.clientWidth, N = kids.length; if (!W0 || N < 2) return;
+  const cs = getComputedStyle(strip), gap = parseFloat(cs.columnGap) || parseFloat(cs.gap) || 8, pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  const r0 = kids[0].getBoundingClientRect(), cw = r0.width || 90, ch = r0.height || 90, avail = W0 - pad;
+  // rows: a picker's row may use the free height beside its stage (two or three rows of cards on a tall screen)
+  let rows = 1; const side = strip.parentElement;
+  if (side && side.classList.contains('dr-side')) {
+    let used = 0; for (const k of side.children) if (k !== strip) used += k.getBoundingClientRect().height;
+    const sg = parseFloat(getComputedStyle(side).rowGap) || 8, free = side.clientHeight - used - sg * (side.children.length - 1) - 14;
+    rows = clamp(Math.floor((free + gap) / (ch + gap)), 1, 3);
+  }
+  const all = Math.max(1, Math.floor((avail + gap) / (cw + gap)));
+  if (N <= all * rows) { delete PG[key]; if (rows > 1 && N > all) strip.classList.add('pg-wrap'); return; }
+  const nav = 34, fit = Math.max(1, Math.floor((avail - 2 * nav + gap) / (cw + gap))), cap = fit * rows, pages = Math.ceil(N / cap), per = Math.min(cap, Math.ceil(N / pages / rows) * rows);
+  if (PG[key] == null || PGS[key] !== selIdx) PG[key] = Math.floor(Math.max(0, selIdx) / per);
+  PGS[key] = selIdx; const p = PG[key] = clamp(PG[key], 0, pages - 1);
+  kids.forEach((k, i) => { k.hidden = Math.floor(i / per) !== p; });
+  strip.classList.add('pg-on'); if (rows > 1) strip.classList.add('pg-wrap');
+  strip.appendChild(pgBtn('prev', p === 0, () => { PG[key] = p - 1; rerender(); }));
+  strip.appendChild(pgBtn('next', p === pages - 1, () => { PG[key] = p + 1; rerender(); }));
+  swipe(strip, d => { const q = clamp(p + d, 0, pages - 1); if (q !== p) { PG[key] = q; hook('sfx', 'tick'); rerender(); } });
+}
+function swipe(box, turn) { // a sideways drag turns the page (and never fires the card under the finger)
+  let x0 = 0, y0 = 0, on = false; box.moved = false;
+  box.onpointerdown = e => { on = true; box.moved = false; x0 = e.clientX; y0 = e.clientY; };
+  box.onpointermove = e => { if (on && Math.abs(e.clientX - x0) > 12) box.moved = true; };
+  box.onpointerup = box.onpointercancel = e => {
+    if (!on) return; on = false; const dx = e.clientX - x0, dy = e.clientY - y0;
+    if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy) * 1.4) turn((dx < 0 ? 1 : -1) * (lang() === 'ar' ? -1 : 1));
+    setTimeout(() => { box.moved = false; }, 0);
+  };
+}
+// a sheet: its blocks are dealt onto pages no taller than the room this screen has. Grids of cards are split card by card,
+// and a heading never ends a page alone.
+function pageSheet(body, kind, keep) {
+  const nav = $('sheetNav'); if (nav) { nav.hidden = true; nav.innerHTML = ''; }
+  body.classList.remove('paged'); body.onpointerdown = body.onpointermove = body.onpointerup = body.onpointercancel = null; body.scrollTop = 0;
+  if (body.querySelector(':scope > .dr')) return;
+  const sheet = body.closest('.sheet'), maxS = parseFloat(getComputedStyle(sheet).maxHeight) || (innerHeight - 24);
+  const maxH = Math.floor(maxS - (body.getBoundingClientRect().top - sheet.getBoundingClientRect().top) - 16);
+  if (!(maxH > 80)) return;
+  const units = [];
+  for (const ch of [...body.children]) {
+    if (ch.matches('.cards,.facts')) for (const it of [...ch.children]) units.push({ n: it, g: ch.className });
+    else if (ch.matches('.mission')) units.push({ n: ch, g: 'mrow' });
+    else units.push({ n: ch, g: null, head: ch.matches('.sec-title,.ladder-head,.hint') });
+  }
+  body.innerHTML = ''; body.classList.add('paged');
+  const pages = []; let page = null, gb = null, onPage = [];
+  const open = () => { if (page) page.hidden = true; page = el('div', 'pg'); page.style.maxHeight = maxH + 'px'; body.appendChild(page); pages.push(page); gb = null; onPage = []; };
+  const put = u => { if (u.g) { if (!gb || gb.className !== u.g) { gb = el('div', u.g); page.appendChild(gb); } gb.appendChild(u.n); } else { page.appendChild(u.n); gb = null; } onPage.push(u); };
+  const take = () => { const u = onPage.pop(), par = u.n.parentNode; par.removeChild(u.n); if (par !== page && !par.childElementCount) { page.removeChild(par); gb = null; } else if (par !== page) gb = par; else { const last = page.lastElementChild; gb = last && onPage.length && onPage[onPage.length - 1].g && last.className === onPage[onPage.length - 1].g ? last : null; } return u; };
+  open();
+  for (const u of units) {
+    put(u);
+    if (page.scrollHeight > maxH + 1 && onPage.length > 1) {
+      take(); const carry = [];
+      while (onPage.length > 1 && onPage[onPage.length - 1].head) carry.unshift(take());
+      open(); for (const h of carry) put(h); put(u);
+    }
+  }
+  const key = 'sheet:' + kind; let p = clamp(keep ? PG[key] | 0 : 0, 0, pages.length - 1);
+  const show = q => {
+    p = PG[key] = clamp(q, 0, pages.length - 1); pages.forEach((pg, i) => { pg.hidden = i !== p; });
+    if (!nav || pages.length < 2) return;
+    nav.hidden = false; nav.innerHTML = '';
+    nav.appendChild(pgBtn('prev', p === 0, () => show(p - 1)));
+    const lab = el('span', 'pg-n'); lab.setAttribute('dir', 'ltr'); lab.textContent = nf(p + 1) + ' / ' + nf(pages.length); nav.appendChild(lab);
+    nav.appendChild(pgBtn('next', p === pages.length - 1, () => show(p + 1)));
+  };
+  show(p);
+  if (pages.length > 1) swipe(body, d => { const q = clamp(p + d, 0, pages.length - 1); if (q !== p) { hook('sfx', 'tick'); show(q); } });
+}
+// long help texts become several short cards, so a card always fits a page on a phone
+function chunks(text, max = 150) {
+  const parts = String(text || '').split(/(?<=[.!؟?。])\s+/), out = []; let cur = '';
+  for (const s of parts) { if (cur && (cur + ' ' + s).length > max) { out.push(cur); cur = s; } else cur = cur ? cur + ' ' + s : s; }
+  if (cur) out.push(cur); return out.length ? out : [''];
+}
+// every panel is measured against the screen it is on and scaled down when it would not fit: nothing is cut off, nothing scrolls
+let fitting = false, fitRaf = 0;
+function fitPanels() {
+  fitting = true;
+  try {
+    for (const ov of document.querySelectorAll('.overlay')) {
+      if (ov.hidden) continue; const p = ov.querySelector(':scope > .panel'); if (!p) continue;
+      const paged = p.classList.contains('sheet') && $('sheetBody').classList.contains('paged');
+      p.style.transform = ''; p.style.maxHeight = paged ? '' : 'none';
+      const cs = getComputedStyle(ov), ah = ov.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom), aw = ov.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const h = Math.max(p.offsetHeight, p.scrollHeight) + 6, w = p.offsetWidth, k = Math.min(1, ah / h, aw / w);
+      // a panel taller than the screen is laid out from the top edge, so it is scaled from the top and then centred in what is left
+      if (k < 0.995 && k > 0.2) { p.style.transformOrigin = 'top center'; p.style.transform = 'translateY(' + Math.max(0, (ah - (h - 6) * k) / 2).toFixed(1) + 'px) scale(' + k.toFixed(3) + ')'; }
+      else { p.style.maxHeight = ''; p.style.transformOrigin = ''; }
+    }
+  } catch (e) { console.error(e); }
+  setTimeout(() => { fitting = false; }, 60);
+}
+function fitSoon() { if (fitRaf) return; fitRaf = setTimeout(() => { fitRaf = 0; fitPanels(); }, 30); }   // a timer, not a frame: it must also run while the page is in the background
+let relayT = 0;
+function relayout() { clearTimeout(relayT); relayT = setTimeout(() => { for (const k in PG) delete PG[k]; if (!$('menu').hidden) renderMenu(); if (!$('sheet').hidden && sheetKind) openSheet(sheetKind); fitPanels(); }, 160); }
+
+// v3.7 the menu tiles carry small pictures in the game's own art (drawn on canvas), not symbols
+function tileArt(kind, cnv) {
+  const c = cnv.getContext('2d'), S = cnv.width; c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, S, S); c.save(); c.scale(S / 96, S / 96); c.lineJoin = 'round'; c.lineCap = 'round';
+  c.fillStyle = '#231a52'; c.strokeStyle = INK; c.lineWidth = 5; rr(c, 4, 4, 88, 88, 22); c.fill(); c.stroke(); c.save(); rr(c, 7, 7, 82, 82, 19); c.clip();
+  stars(c, 96, 96, 1.3 + kind.length, 9, 0.55);
+  if (kind === 'hangar') { if (!art('drawUsta', c, 48, 150, 1.5, 0.5)) { c.fillStyle = '#e9b330'; rr(c, 30, 30, 36, 50, 8); c.fill(); } }
+  else if (kind === 'costumes') { if (!astro(c, 48, 168, 2.1, { t: 0.4, pose: 'stand' })) astroFallback(c, 48, 70); }
+  else if (kind === 'duels') { const L = MM('rivalList') || [], r = L.find(x => x.open && !x.beaten) || L.filter(x => x.open).pop() || { id: 'khurda' }; rivalPic(c, r.id, 50, 50, 92, { t: 0.3 }); }
+  else if (kind === 'help') { if (!art('drawNabeeh', c, 48, 52, 2.3, { t: 0.3, mood: 'happy' })) { c.fillStyle = '#e9eef6'; c.beginPath(); c.arc(48, 48, 24, 0, TAU); c.fill(); } }
+  else if (kind === 'badges') { const m = mk(96, 96); medal(m.getContext('2d'), 'tour', 2, 96); c.drawImage(m, 10, 10, 76, 76); }
+  else { // missions: a clipboard with ticked lines and a dirham
+    c.fillStyle = '#b98a55'; c.strokeStyle = INK; c.lineWidth = 3.5; rr(c, 24, 18, 48, 64, 7); c.fill(); c.stroke();
+    c.fillStyle = '#fff8ea'; c.lineWidth = 2.5; rr(c, 29, 25, 38, 52, 4); c.fill(); c.stroke();
+    c.fillStyle = '#9aa3b8'; c.lineWidth = 3; rr(c, 38, 12, 20, 12, 4); c.fill(); c.stroke();
+    for (let i = 0; i < 3; i++) { const y = 37 + i * 13; c.fillStyle = i < 2 ? '#3ccf7a' : '#d6cfc2'; c.lineWidth = 2; c.beginPath(); c.arc(37, y, 4.6, 0, TAU); c.fill(); c.stroke();
+      if (i < 2) { c.strokeStyle = '#fff'; c.lineWidth = 2; c.beginPath(); c.moveTo(34.6, y); c.lineTo(36.4, y + 2); c.lineTo(39.6, y - 2); c.stroke(); c.strokeStyle = INK; }
+      c.lineWidth = 3; c.beginPath(); c.moveTo(46, y); c.lineTo(61, y); c.stroke(); }
+    c.fillStyle = '#ffd23f'; c.lineWidth = 3; c.beginPath(); c.arc(68, 70, 12, 0, TAU); c.fill(); c.stroke(); c.fillStyle = '#c9930f'; c.beginPath(); c.arc(68, 70, 6.5, 0, TAU); c.fill();
+  }
+  c.restore(); c.restore();
+}
+function tileArts() {
+  document.querySelectorAll('.tile[data-sheet]').forEach(b => {
+    let cnv = b.querySelector('canvas.tile-art');
+    if (!cnv) { cnv = mk(96, 96); cnv.className = 'tile-art'; cnv.setAttribute('aria-hidden', 'true'); const sv = [...b.children].find(e => e.tagName.toLowerCase() === 'svg'); if (sv) b.replaceChild(cnv, sv); else b.insertBefore(cnv, b.firstChild); }
+    try { tileArt(b.dataset.sheet, cnv); } catch (e) { console.error(e); }
+  });
+  // the launch button shows the player's own ship
+  const lb = $('launchBtn'); if (lb) {
+    let cnv = lb.querySelector('canvas'); if (!cnv) { cnv = mk(128, 80); cnv.className = 'launch-art'; cnv.setAttribute('aria-hidden', 'true'); const sv = lb.querySelector('svg'); if (sv) lb.replaceChild(cnv, sv); else lb.insertBefore(cnv, lb.firstChild); }
+    const c = cnv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 128, 80); c.save(); c.translate(70, 40); c.scale(1.25, 1.25);
+    art('drawShip', c, 0, 0, Object.assign({}, shipLook(), { t: 0.4, tilt: -0.12, thrust: 1, hurt: 0, shield: 0, beam: false })); c.restore();
+  }
+}
 // Usta's advice for a ship-level gate: "we need ship level 15, you have 13 · Usta recommends: Blaster"
 function gateText(need) {
   const rec = MM('recommend');
@@ -493,7 +640,7 @@ function gateText(need) {
 export function renderMenu() {
   ensureSel(); syncCoins(); syncMute();
   const strip = $('jStrip'); if (!strip) return;
-  const keepX = strip.scrollLeft, first = !strip.childElementCount; strip.innerHTML = ''; dragScroll(strip);
+  strip.innerHTML = '';
   M.JOURNEYS.forEach((j, i) => {
     const open = M.isUnlocked(j.id), done = M.legsDone(j.id), on = j.id === selJ;
     const prev = i > 0 ? M.JOURNEYS[i - 1] : null, prevDone = !prev || M.legsDone(prev.id) >= 3;
@@ -521,12 +668,7 @@ export function renderMenu() {
     };
     strip.appendChild(b);
   });
-  if (first) requestAnimationFrame(() => {
-    const c2 = strip.children[Math.max(0, M.journeyIndex(selJ))]; if (!c2) return;
-    const sr2 = strip.getBoundingClientRect(), cr = c2.getBoundingClientRect();
-    if (cr.left < sr2.left + 8 || cr.right > sr2.right - 8) strip.scrollLeft += lang() === 'ar' ? cr.right - sr2.right + 8 : cr.left - sr2.left - 8;
-  });
-  else strip.scrollLeft = keepX;
+  pageRow(strip, 'journeys', M.journeyIndex(selJ), renderMenu);
   // legs of the selected journey (with their three stars)
   const row = $('legRow'); row.innerHTML = '';
   const done = M.legsDone(selJ);
@@ -552,6 +694,7 @@ export function renderMenu() {
   }
   $('launchBtn').classList.toggle('hard', hOn);
   $('launchBtn').setAttribute('aria-label', T('b_launch') + ' · ' + jName(selJ) + ' · ' + T('m_legOf', selL, 3) + (hOn ? ' · ' + T('b_hard') : ''));
+  tileArts(); fitSoon();
   boostRow($('boostRow'));
   $('dotMissions').hidden = !(M.missionsReady() > 0 || M.loginReady());
   // duels tile: locked until Mars is done
@@ -660,13 +803,15 @@ export function openSheet(kind) {
   kind = SHEET_ALIAS[kind] || kind;
   const S2 = SHEETS[kind]; if (!S2) return;
   if (kind === 'duels' && !MM('duelsOpen')) { note(T('du_lock'), 2600); return; }
-  const body = $('sheetBody'), same = kind === sheetKind, keep = same ? body.scrollTop : 0, wasOpen = !$('sheet').hidden;
+  const body = $('sheetBody'), same = kind === sheetKind, wasOpen = !$('sheet').hidden;
+  { const sp = body.closest('.sheet'); if (sp) { sp.style.transform = ''; sp.style.maxHeight = ''; } }   // measure the sheet unscaled
   if (!wasOpen) { sheetFrom = document.querySelector('[data-sheet="' + kind + '"]'); hideNote(); }
   dropAnims('sheet'); sheetKind = kind; body.innerHTML = ''; $('sheet').hidden = false; syncCoins();
   $('sheetTitle').textContent = T(S2[0]);
   if (!wasOpen) { hangTab = 'up'; dr = null; }
   S2[1](body);
-  body.scrollTop = keep;
+  pageSheet(body, kind, same && wasOpen);
+  fitPanels();
   if (!wasOpen && kbd) try { $('sheetClose').focus({ preventScroll: true }); } catch (e) {}
 }
 export function closeSheet() {
@@ -686,7 +831,7 @@ function card(draw, name, sub, btn, cls) {
 }
 function cardBtn(btn) {
   const b = el('button', btn.cls || ''); b.type = 'button'; b.disabled = !!btn.disabled;
-  if (btn.price != null) { b.appendChild(coinIc()); b.append(nf(btn.price)); b.setAttribute('aria-label', btn.text); } else b.textContent = btn.text;
+  if (btn.price != null) { b.appendChild(coinIc()); b.append(nf(btn.price)); b.setAttribute('aria-label', btn.text); } else { if (btn.ic) b.appendChild(icon(btn.ic)); b.append(btn.text); }
   if (btn.onClick) b.onclick = btn.onClick;
   return b;
 }
@@ -742,7 +887,7 @@ function sheetHangar(body) {
     const tr = TRICKS[u.id] || [], next = tr.find(o => o[0] > lv), got = tr.filter(o => o[0] <= lv).map(o => trickName(o[1]));
     if (next) info.appendChild(withIc('spark', trickLine(trickName(next[1])).replace(TRICK, '').trim() + ' · ' + T('up_lv', next[0], max), 'trick'));
     else if (got.length) info.appendChild(withIc('spark', got.join(' · '), 'trick got'));
-    const b = cardBtn(isMax ? { text: T('up_max'), cls: 'sec', disabled: true } : { text: T('up_buy', price), price, disabled: !can, onClick: () => {
+    const b = cardBtn(isMax ? { text: T('up_max'), ic: 'check', cls: 'sec', disabled: true } : { text: T('up_buy', price), price, disabled: !can, onClick: () => {
       const r = M.buyUpgrade(u.id) || {};
       if (r.ok) { bought(); ustaLine = TL('usta_buy'); hook('onBuy', u.id); } else if (r.reason === 'max') ustaLine = TL('usta_max'); else { note(T('notEnough')); ustaLine = TL('usta_poor'); }
       openSheet('hangar');
@@ -911,7 +1056,7 @@ function sheetCostumes(body) {
     }
     side.appendChild(sg);
   }
-  const strip = el('div', 'dr-strip' + (step === 'ship' ? ' wide' : '')); strip.setAttribute('role', 'listbox'); dragScroll(strip);
+  const strip = el('div', 'dr-strip' + (step === 'ship' ? ' wide' : '')); strip.setAttribute('role', 'listbox');
   items.forEach((x, i) => {
     const b = el('button', 'dr-opt' + (x === it ? ' sel' : '') + (x.on ? ' on' : '') + (x.locked ? ' locked' : '')); b.type = 'button';
     b.setAttribute('role', 'option'); b.setAttribute('aria-selected', x === it ? 'true' : 'false'); b.setAttribute('aria-label', x.name + (x.on ? ' · ' + T('wearing') : x.locked ? ' · ' + T('bg_locked') : ''));
@@ -939,8 +1084,7 @@ function sheetCostumes(body) {
   side.appendChild(foot);
   wrap.appendChild(side);
   body.appendChild(wrap);
-  // keep the chosen card in view
-  requestAnimationFrame(() => { const sel = strip.querySelector('.sel'); if (sel && sel.scrollIntoView) try { sel.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} });
+  pageRow(strip, 'dr:' + step + ':' + (step === 'suit' ? dr.group : ''), items.indexOf(it), () => openSheet('costumes'));
 }
 function pickChar(id) {
   if (!MM('setChar', id)) { note(T('bg_locked')); return; }
@@ -958,7 +1102,7 @@ function sheetMissions(body) {
     const head = el('div', 'ladder-head');
     head.appendChild(el('p', 'sec-title', T('ld_title', L.lv)));
     const mp = el('span', 'multpill'); mp.setAttribute('dir', 'ltr');
-    mp.append('×' + nf(L.mult)); if (L.nextMult != null && L.nextMult > L.mult) { mp.appendChild(el('b', null, ' → ')); mp.append('×' + nf(L.nextMult)); }
+    mp.append('×' + nf(L.mult)); if (L.nextMult != null && L.nextMult > L.mult) { mp.appendChild(icon('arrow', 'dir')); mp.append('×' + nf(L.nextMult)); }
     mp.setAttribute('aria-label', T('ld_mult', L.mult));
     head.appendChild(mp); body.appendChild(head);
     body.appendChild(el('p', 'hint', T('ld_note', L.mult, L.nextMult, L.reward)));
@@ -987,7 +1131,7 @@ function sheetMissions(body) {
     const tx = el('div'); tx.appendChild(el('b', null, T('ms_' + m.kind, m.goal))); tx.appendChild(el('br')); tx.appendChild(el('small', null, T('bg_reward', m.reward)));
     row.appendChild(tx);
     const b = el('button'); b.type = 'button';
-    if (m.claimed) { b.textContent = T('claimed'); b.disabled = true; }
+    if (m.claimed) { b.appendChild(icon('check')); b.append(T('claimed')); b.disabled = true; }
     else if (ready) { b.appendChild(coinIc()); b.append(T('claim')); b.onclick = () => { const got = M.claimMission(i); if (got) { note(plusCoins(got)); hook('sfx', 'chime'); } openSheet('missions'); }; }
     else { b.textContent = T('ms_prog', m.progress, m.goal); b.disabled = true; }
     row.appendChild(b);
@@ -1067,7 +1211,7 @@ function sheetDuels(body) {
   side.appendChild(head);
   const br = el('div', 'boosts in-sheet'); br.dataset.none = '1'; br.setAttribute('role', 'group'); br.setAttribute('aria-label', T('bo_title')); boostRow(br, true);
   const bw = el('div', 'boost-line'); bw.appendChild(el('span', 'label', T('bo_title'))); bw.appendChild(br); side.appendChild(bw);
-  const strip = el('div', 'dr-strip wide du-strip'); strip.setAttribute('role', 'listbox'); dragScroll(strip);
+  const strip = el('div', 'dr-strip wide du-strip'); strip.setAttribute('role', 'listbox');
   list.forEach((x, k) => {
     const b = el('button', 'dr-opt' + (x.id === duelSel ? ' sel' : '') + (x.beaten ? ' on' : '') + (x.open ? '' : ' locked')); b.type = 'button';
     b.setAttribute('role', 'option'); b.setAttribute('aria-selected', x.id === duelSel ? 'true' : 'false');
@@ -1082,7 +1226,7 @@ function sheetDuels(body) {
   side.appendChild(strip);
   wrap.appendChild(side);
   body.appendChild(wrap);
-  requestAnimationFrame(() => { const sel = strip.querySelector('.sel'); if (sel && sel.scrollIntoView) try { sel.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} });
+  pageRow(strip, 'duels', k0, () => openSheet('duels'));
   const firstOpen = list.find(x => x.open && !x.beaten); if (firstOpen) bakeSoon(themeOf((rivalDef(firstOpen.id) || {}).theme));
 }
 // Rematches are free (owner decision): "Rematch" with no price
@@ -1099,7 +1243,7 @@ function sheetBadges(body) {
     const name = b.tiered ? T('bc_' + b.id) : T('bg_' + b.id);
     const desc = b.tiered ? T('bc_' + b.id + '_d', b.goal) : T('bg_' + b.id + '_d');
     const cc = card(cnv => medal(cnv.getContext('2d'), b.id, tier, 192), name, desc, null, b.tier > 0 ? '' : 'locked');
-    const chip = el('span', 'tier', b.tiered ? (b.done ? T('tier_all') : b.tier > 0 ? T('tier_' + (b.tier - 1)) : T('tier_none')) : (b.done ? null : T('bg_locked'))); if (!b.tiered && b.done) chip.appendChild(icon('check'));
+    const chip = el('span', 'tier', b.tiered ? (b.done ? T('tier_all') : b.tier > 0 ? T('tier_' + (b.tier - 1)) : T('tier_none')) : (b.done ? null : T('bg_locked'))); if (b.done) chip.appendChild(icon('check'));
     cc.appendChild(chip);
     if (!b.done && b.tiered) {
       cc.appendChild(progBar(b.progress / Math.max(1, b.goal)));
@@ -1178,9 +1322,9 @@ function sheetHelp(body) {
   const sec = (title, items) => {
     body.appendChild(el('p', 'sec-title', title));
     const g = el('div', 'cards help-cards');
-    for (const [kind, key] of items) {
+    for (const [kind, key] of items) for (const part of chunks(T(key))) {
       const c = el('div', 'card'), cnv = mk(192, 144); cnv.setAttribute('aria-hidden', 'true'); helpPic(kind)(cnv); c.appendChild(cnv);
-      c.appendChild(el('small', null, T(key))); g.appendChild(c);
+      c.appendChild(el('small', null, part)); g.appendChild(c);
     }
     body.appendChild(g);
   };
@@ -1807,7 +1951,14 @@ export function initUI(h) {
   // rotate overlay
   syncRotate();
   if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', syncRotate); else if (portraitMQ.addListener) portraitMQ.addListener(syncRotate);
-  addEventListener('resize', syncRotate);
+  addEventListener('resize', syncRotate); addEventListener('resize', relayout);
+  // any panel that appears or changes size gets fitted to this screen (results, pause, gifts, language pick…)
+  try {
+    const ro = new ResizeObserver(() => { if (!fitting) fitSoon(); });
+    document.querySelectorAll('.overlay > .panel').forEach(p => ro.observe(p));
+    const mo = new MutationObserver(() => fitSoon());
+    document.querySelectorAll('.overlay').forEach(o => mo.observe(o, { attributes: true, attributeFilter: ['hidden'] }));
+  } catch (e) { /* older browsers: the explicit calls still fit the menu and the sheets */ }
   syncMute();
   registerSW();
 }

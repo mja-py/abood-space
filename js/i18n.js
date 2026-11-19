@@ -116,7 +116,7 @@ export const STR = {
     storyG: 'موزة، أخت عبود، خلّصت تدريبها وانضمّت لمحطة فلك! تطير بنفس سفينة العائلة مع نبيه، والأسطى يجهّزها لها. حلمها: تلف كل كواكب المجموعة الشمسية… وتصلّح كل روبوت متمرد تلاقيه في الطريق!',
     story_short: 'من محطة فلك للقمر… وبعدين لكل الكواكب!',
     station: 'محطة فلك', n_abood: 'عبود', n_aboodG: 'موزة', n_nabeeh: 'نبيه', n_usta: 'الأسطى',
-    coins: n => `${nf(n)} د.إ`, cur: 'د.إ', arrow: '←', sec: ' ث',
+    coins: n => `${nf(n)} د.إ`, cur: 'د.إ', arrow: '', sec: ' ث',
     // ---- buttons ----
     b_launch: 'انطلق!', b_launchG: 'انطلقي!', b_hangar: 'ورشة الأسطى', b_suits: 'البدلات', b_costumes: 'البدلات', b_missions: 'المهمات', b_duels: 'التحدي',
     b_badges: 'الأوسمة', b_help: 'طريقة اللعب', b_close: 'إغلاق', b_back: 'رجوع', b_station: 'المحطة', b_next: 'المرحلة الياية',
@@ -125,9 +125,9 @@ export const STR = {
     // ---- menu ----
     m_journeys: 'رحلاتك', m_legs: 'المراحل', m_leg: i => `المرحلة ${nf(i + 1)}`, m_legOf: (i, n) => `المرحلة ${nf(i + 1)} من ${nf(n)}`,
     m_locked: 'مقفلة', m_lockedHint: name => `وصّل ${name} أول عشان تنفتح`, m_lockedHintG: name => `وصّلي ${name} أول عشان تنفتح`,
-    m_done: 'خلصت ✓', m_new: 'جديد!',
+    m_done: 'خلصت', m_new: 'جديد!',
     m_replay: 'إعادة · 35% من المكافأة', m_reward: n => `المكافأة ${nf(n)} د.إ`, m_bonus: n => `مكافأة الوصول ${nf(n)} د.إ`,
-    m_route: (a, b) => `${a} ← ${b}`, m_best: n => `أفضل نتيجة: ${nf(n)}`, m_legsDone: (a, b) => `${nf(a)} من ${nf(b)}`,
+    m_route: (a, b) => `من ${a} إلى ${b}`, m_best: n => `أفضل نتيجة: ${nf(n)}`, m_legsDone: (a, b) => `${nf(a)} من ${nf(b)}`,
     m_next: name => `الجاي: ${name}`, m_allDone: 'لفّيت المجموعة الشمسية كلها! عيد أي مرحلة وجمّع دراهم.',
     m_allDoneG: 'لفّيتي المجموعة الشمسية كلها! عيدي أي مرحلة وجمّعي دراهم.',
     // ---- gates (ship level) ----
@@ -160,7 +160,7 @@ export const STR = {
     leg_neptune_0: 'آخر المدارات', leg_neptune_1: 'رياح نبتون', leg_neptune_2: 'الحافة الزرقاء',
     // ---- HUD ----
     h_score: 'النقاط', h_hull: 'الهيكل', h_super: 'شعاع الأمل', h_superReady: 'جاهز!', h_combo: n => `×${n}`,
-    h_shield: 'الدرع', h_rapid: 'رمي سريع', h_prog: (a, b) => `${a} ← ${b}`, h_rival: 'الروبوت المتمرد',
+    h_shield: 'الدرع', h_rapid: 'رمي سريع', h_prog: (a, b) => `من ${a} إلى ${b}`, h_rival: 'الروبوت المتمرد',
     hint: 'اسحب إصبعك فوق وتحت عشان تحرّك السفينة. المدفع يرمي بروحه!',
     hintG: 'اسحبي إصبعج فوق وتحت عشان تحرّكين السفينة. المدفع يرمي بروحه!',
     // ---- a11y ----
@@ -225,6 +225,7 @@ export const STR = {
     sc_falak: 'متوازنة: بدون تغيير', sc_patch: 'مدرّعة: +1 هيكل، أبطأ 10%', sc_hornet: 'سريعة: أسرع 20%، الطلقة أضعف 10%', sc_radar: 'كشّافة: التحذير أطول 20% وتسحب الدراهم من أبعد',
     sc_whirl: 'دوّارة: الدرع يرجع أسرع 25%', sc_anvil: 'ثقيلة: الطلقة أقوى 25%، الرمي أبطأ 15%', sc_royal: 'ملكية: شعاع الأمل يتعبّى أسرع 20%',
     ch_abood_talent: 'الرامي: طلقاته أقوى 10%', ch_mozah_talent: 'الطيّارة: سفينتها أسرع 12% وتلقط من أبعد',
+    f_3stars: 'ثلاث نجوم!', f_magUp: 'لفوق!', f_magDown: 'لتحت!', pg_prev: 'الصفحة السابقة', pg_next: 'الصفحة التالية',
     f_form2: 'الشكل الثاني!', bq_form2: ['ما خلّصت بعد!', 'الحين الجد!'], bq_fury: ['ما في مهرب!', 'دوّر على الممر الآمن!'], bq_furyG: ['ما في مهرب!', 'دوّري على الممر الآمن!'],
     bot_form2: ['ما استسلم! صار أكبر!', 'شكل ثاني! خذ التصليح وكمّل!'], bot_form2G: ['ما استسلم! صار أكبر!', 'شكل ثاني! خذي التصليح وكمّلي!'],
     bot_threat: ['الروبوتات شافت أسلحتك الجديدة… جايين أكثر!', 'سفينتك أقوى، وهم بعد صاروا أقوى!'],
@@ -352,7 +353,7 @@ export const STR = {
     up_nabeeh: 'ذكاء نبيه', up_nabeeh_d: 'نبيه يرمي ليزر على الصخور، ومن المستوى 3 يشفط الدراهم',
     up_nabeeh_v: v => v.rate ? `ليزر ${nf(v.rate)}/ث · ضرر ${nf(v.dmg)}${v.warnPlus ? ' · ✦ ينبّه أبكر' : ''}${v.vacuum ? ' · يشفط الدراهم' : ''}${v.intercept ? ' · ✦ يصدّ الألغام في التحدي' : ''}${v.double ? ' · ليزر دبل' : ''}` : 'يطير جنبك وينبّهك',
     up_nabeeh_vG: v => v.rate ? `ليزر ${nf(v.rate)}/ث · ضرر ${nf(v.dmg)}${v.warnPlus ? ' · ✦ ينبّه أبكر' : ''}${v.vacuum ? ' · يشفط الدراهم' : ''}${v.intercept ? ' · ✦ يصدّ الألغام في التحدي' : ''}${v.double ? ' · ليزر دبل' : ''}` : 'يطير جنبج وينبّهج',
-    up_lv: (k, n) => `المستوى ${nf(k)} من ${nf(n)}`, up_max: 'أعلى مستوى ✓', up_buy: n => `طوّر · ${nf(n)} د.إ`, up_buyG: n => `طوّري · ${nf(n)} د.إ`,
+    up_lv: (k, n) => `المستوى ${nf(k)} من ${nf(n)}`, up_max: 'أعلى مستوى', up_buy: n => `طوّر · ${nf(n)} د.إ`, up_buyG: n => `طوّري · ${nf(n)} د.إ`,
     up_next: 'الجاي', up_now: 'الحين', up_rec: 'الأسطى ينصح', up_trick: name => `✦ حركة جديدة: ${name}`,
     tr_pierce: 'طلقة تخترق', tr_regen: 'تصليح ذاتي', tr_shieldBlast: 'انفجار الدرع', tr_nearMiss: 'النجاة تشحن الشعاع', tr_pullPickups: 'يجذب القوى',
     tr_warn: 'تنبيه أبكر', tr_intercept: 'يصدّ الألغام', tr_double: 'ليزر دبل',
@@ -395,7 +396,7 @@ export const STR = {
     // ---- missions (ms_<kind> added below) ----
     ms_title: 'المهمات', ms_daily: 'مهمات اليوم', ms_note: 'تتجدد كل يوم. استلم جوايزها من هني.', ms_noteG: 'تتجدد كل يوم. استلمي جوايزها من هني.',
     ms_bonus: n => `خلّص الثلاث اليوم: ${pl(n)} د.إ زيادة`, ms_bonusG: n => `خلّصي الثلاث اليوم: ${pl(n)} د.إ زيادة`,
-    ms_prog: (a, b) => `${nf(a)} / ${nf(b)}`, ms_done: 'خلصت ✓', claim: 'استلم', claimG: 'استلمي', claimed: 'تم ✓',
+    ms_prog: (a, b) => `${nf(a)} / ${nf(b)}`, ms_done: 'خلصت', claim: 'استلم', claimG: 'استلمي', claimed: 'تم',
     // ---- mission ladder (lm_<kind> added below) ----
     ld_title: n => `سلّم المهمات · الدرجة ${nf(n)}`, ld_mult: m => `الدراهم ${xm(m)}`,
     ld_note: (m, nx, r) => `خلّص الثلاث وتاخذ ${nf(r)} د.إ، والدراهم اللي تجمعها في الطيران تصير ${xm(nx)} بدل ${xm(m)}.`,
@@ -463,7 +464,7 @@ export const STR = {
     // ---- badges ----
     bg_title: 'الأوسمة', bg_tiered: 'كل وسام له 3 مستويات: برونزي ثم فضي ثم ذهبي. كل مستوى هدف أكبر وجايزة أكبر.',
     bg_count: (a, b) => `${nf(a)} من ${nf(b)}`, bg_locked: 'مقفل', bg_reward: n => `${pl(n)} د.إ`, bg_prog: (a, b) => `${nf(a)} من ${nf(b)}`,
-    tier_0: 'برونزي', tier_1: 'فضي', tier_2: 'ذهبي', tier_none: 'لسه ما بديت', tier_all: 'كل المستويات ✓',
+    tier_0: 'برونزي', tier_1: 'فضي', tier_2: 'ذهبي', tier_none: 'لسه ما بديت', tier_all: 'كل المستويات',
     bg_first: 'أول طيران', bg_first_d: 'طِر أول مرة من محطة فلك', bg_first_dG: 'طيري أول مرة من محطة فلك',
     bg_hangar: 'زبون الأسطى', bg_hangarG: 'زبونة الأسطى', bg_hangar_d: 'اشتر أول تطوير من الورشة', bg_hangar_dG: 'اشتري أول تطوير من الورشة',
     bg_moon: 'وصلنا القمر!', bg_moon_d: 'خلّص رحلة القمر', bg_moon_dG: 'خلّصي رحلة القمر',
@@ -584,16 +585,16 @@ export const STR = {
     storyG: "Mozah, Abood's sister, finished her training and joined Falak Station! She flies the same family ship with Nabeeh, and Usta gets it ready for her. Her dream: tour every planet in the solar system… and fix every rogue robot she meets on the way!",
     story_short: 'From Falak Station to the Moon… and then every planet!',
     station: 'Falak Station', n_abood: 'Abood', n_aboodG: 'Mozah', n_nabeeh: 'Nabeeh', n_usta: 'Usta',
-    coins: n => `AED ${nf(n)}`, cur: 'AED', arrow: '→', sec: 's',
+    coins: n => `AED ${nf(n)}`, cur: 'AED', arrow: '', sec: 's',
     // ---- buttons ----
     b_launch: 'Launch!', b_hangar: "Usta's hangar", b_suits: 'Costumes', b_costumes: 'Costumes', b_missions: 'Missions', b_duels: 'Duels',
     b_badges: 'Badges', b_help: 'How to play', b_close: 'Close', b_back: 'Back', b_station: 'Station', b_next: 'Next leg',
     b_retry: 'Try again', b_resume: 'Resume', b_quit: 'Back to station', b_menu: 'Menu', b_ok: 'OK', b_fullscreen: 'Fullscreen', b_replay: 'Replay',
     // ---- menu ----
     m_journeys: 'Your journeys', m_legs: 'Legs', m_leg: i => `Leg ${nf(i + 1)}`, m_legOf: (i, n) => `Leg ${nf(i + 1)} of ${nf(n)}`,
-    m_locked: 'Locked', m_lockedHint: name => `Reach ${name} first to unlock`, m_done: 'Done ✓', m_new: 'New!',
+    m_locked: 'Locked', m_lockedHint: name => `Reach ${name} first to unlock`, m_done: 'Done', m_new: 'New!',
     m_replay: 'Replay · 35% of the reward', m_reward: n => `Reward AED ${nf(n)}`, m_bonus: n => `Arrival bonus AED ${nf(n)}`,
-    m_route: (a, b) => `${a} → ${b}`, m_best: n => `Best score: ${nf(n)}`, m_legsDone: (a, b) => `${nf(a)} of ${nf(b)}`,
+    m_route: (a, b) => `${a} to ${b}`, m_best: n => `Best score: ${nf(n)}`, m_legsDone: (a, b) => `${nf(a)} of ${nf(b)}`,
     m_next: name => `Next: ${name}`, m_allDone: 'You toured the whole solar system! Replay any leg to collect dirhams.',
     // ---- gates (ship level) ----
     m_need: (n, have) => `Usta: we need ship level ${nf(n)}, you have ${nf(have)}. Upgrade the ship in the hangar!`,
@@ -623,7 +624,7 @@ export const STR = {
     leg_neptune_0: 'The last orbits', leg_neptune_1: "Neptune's winds", leg_neptune_2: 'The blue edge',
     // ---- HUD ----
     h_score: 'Score', h_hull: 'Hull', h_super: 'Amal Beam', h_superReady: 'Ready!', h_combo: n => `×${n}`,
-    h_shield: 'Shield', h_rapid: 'Rapid fire', h_prog: (a, b) => `${a} → ${b}`, h_rival: 'Rogue robot',
+    h_shield: 'Shield', h_rapid: 'Rapid fire', h_prog: (a, b) => `${a} to ${b}`, h_rival: 'Rogue robot',
     hint: 'Drag up and down to move the ship. The blaster fires by itself!',
     // ---- a11y ----
     a_pause: 'Pause', a_sound: 'Sound and music', a_super: 'Amal Beam', a_lang: 'Language', a_coins: 'Your dirhams',
@@ -675,6 +676,7 @@ export const STR = {
     sc_falak: 'Balanced: no change', sc_patch: 'Tank: +1 hull, 10% slower', sc_hornet: 'Racer: 20% faster, shots 10% weaker', sc_radar: 'Scout: warnings 20% longer, coins pulled from further',
     sc_whirl: 'Spinner: shield recharges 25% faster', sc_anvil: 'Heavy: shots 25% stronger, fire rate 15% lower', sc_royal: 'Ace: the Amal Beam charges 20% faster',
     ch_abood_talent: 'Gunner: shots 10% stronger', ch_mozah_talent: 'Flyer: ship 12% faster, picks up from further',
+    f_3stars: '3 stars!', f_magUp: 'Up!', f_magDown: 'Down!', pg_prev: 'Previous page', pg_next: 'Next page',
     f_form2: 'SECOND FORM!', bq_form2: ['I am not finished!', 'Now for real!'], bq_fury: ['Nowhere to run!', 'Find the safe lane!'],
     bot_form2: ['It did not give up! It got bigger!', 'A second form! Grab the repair and keep going!'],
     bot_threat: ['The robots noticed your new guns… more are coming!', 'Your ship is stronger, and so are they!'],
@@ -779,7 +781,7 @@ export const STR = {
     up_magnet_v: v => v.magnet ? `Range ${nf(v.magnet)}${v.pullPickups ? ' · ✦ pulls power-ups too' : ''}` : 'No magnet',
     up_nabeeh: 'Nabeeh AI', up_nabeeh_d: 'Nabeeh fires a laser at rocks, and from level 3 vacuums up dirhams',
     up_nabeeh_v: v => v.rate ? `Laser ${nf(v.rate)}/s · damage ${nf(v.dmg)}${v.warnPlus ? ' · ✦ earlier warnings' : ''}${v.vacuum ? ' · vacuums dirhams' : ''}${v.intercept ? ' · ✦ blocks mines in duels' : ''}${v.double ? ' · double laser' : ''}` : 'Flies with you and warns you',
-    up_lv: (k, n) => `Level ${nf(k)} of ${nf(n)}`, up_max: 'Max level ✓', up_buy: n => `Upgrade · AED ${nf(n)}`, up_next: 'Next', up_now: 'Now',
+    up_lv: (k, n) => `Level ${nf(k)} of ${nf(n)}`, up_max: 'Max level', up_buy: n => `Upgrade · AED ${nf(n)}`, up_next: 'Next', up_now: 'Now',
     up_rec: 'Usta recommends', up_trick: name => `✦ New trick: ${name}`,
     tr_pierce: 'Piercing bolts', tr_regen: 'Self-repair', tr_shieldBlast: 'Shield blast', tr_nearMiss: 'Close-call charge', tr_pullPickups: 'Power-up pull',
     tr_warn: 'Earlier warnings', tr_intercept: 'Mine blocker', tr_double: 'Double laser',
@@ -816,7 +818,7 @@ export const STR = {
     free: 'Free', wear: 'Wear', wearing: 'Wearing', badgeOnly: 'Unlocked by a badge', buy: n => `Buy · AED ${nf(n)}`, owned: 'Owned',
     // ---- missions (ms_<kind> added below) ----
     ms_title: 'Missions', ms_daily: "Today's missions", ms_note: 'New ones every day. Claim the rewards here.', ms_bonus: n => `Finish all three today: +AED ${nf(n)} extra`,
-    ms_prog: (a, b) => `${nf(a)} / ${nf(b)}`, ms_done: 'Done ✓', claim: 'Claim', claimed: 'Claimed ✓',
+    ms_prog: (a, b) => `${nf(a)} / ${nf(b)}`, ms_done: 'Done', claim: 'Claim', claimed: 'Claimed',
     // ---- mission ladder (lm_<kind> added below) ----
     ld_title: n => `Mission ladder · level ${nf(n)}`, ld_mult: m => `Dirhams ×${nf(m)}`,
     ld_note: (m, nx, r) => `Finish all three for AED ${nf(r)}, and the dirhams you pick up become ×${nf(nx)} instead of ×${nf(m)}.`,
@@ -880,7 +882,7 @@ export const STR = {
     // ---- badges ----
     bg_title: 'Badges', bg_tiered: 'Each badge has 3 tiers: bronze, then silver, then gold. Every tier is a bigger goal with a bigger reward.',
     bg_count: (a, b) => `${nf(a)} of ${nf(b)}`, bg_locked: 'Locked', bg_reward: n => `+AED ${nf(n)}`, bg_prog: (a, b) => `${nf(a)} of ${nf(b)}`,
-    tier_0: 'Bronze', tier_1: 'Silver', tier_2: 'Gold', tier_none: 'Not started yet', tier_all: 'All tiers ✓',
+    tier_0: 'Bronze', tier_1: 'Silver', tier_2: 'Gold', tier_none: 'Not started yet', tier_all: 'All tiers',
     bg_first: 'First flight', bg_first_d: 'Fly out of Falak Station for the first time',
     bg_hangar: "Usta's customer", bg_hangar_d: 'Buy your first upgrade in the hangar',
     bg_moon: 'Moon reached!', bg_moon_d: 'Finish the journey to the Moon',
