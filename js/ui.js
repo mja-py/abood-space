@@ -26,6 +26,7 @@ import * as M from './meta.js?v=__BUILD__';
 import { T, TL, nf, lang, setLang, applyI18n } from './i18n.js?v=__BUILD__';
 import * as I from './i18n.js?v=__BUILD__';
 import * as A from './art.js?v=__BUILD__';
+import * as PZ from './pieces.js?v=__BUILD__';
 
 const $ = id => document.getElementById(id);
 const TAU = Math.PI * 2;
@@ -560,7 +561,7 @@ function pageSheet(body, kind, keep) {
   }
   const key = 'sheet:' + kind; let p = clamp(keep ? PG[key] | 0 : 0, 0, pages.length - 1);
   const show = q => {
-    p = PG[key] = clamp(q, 0, pages.length - 1); pages.forEach((pg, i) => { pg.hidden = i !== p; });
+    p = PG[key] = clamp(q, 0, pages.length - 1); pages.forEach((pg, i) => { pg.hidden = i !== p; pg.style.maxHeight = i === p && pg.scrollHeight > maxH + 1 ? 'none' : maxH + 'px'; }); fitSoon();
     if (!nav || pages.length < 2) return;
     nav.hidden = false; nav.innerHTML = '';
     nav.appendChild(pgBtn('prev', p === 0, () => show(p - 1)));
@@ -585,6 +586,7 @@ function fitPanels() {
       if (ov.hidden) continue; const p = ov.querySelector(':scope > .panel'); if (!p) continue;
       const paged = p.classList.contains('sheet') && $('sheetBody').classList.contains('paged');
       p.style.transform = ''; p.style.maxHeight = paged ? '' : 'none';
+      if (paged) { const sb = $('sheetBody'); if (sb.scrollHeight > sb.clientHeight + 3) p.style.maxHeight = 'none'; }   // one block taller than a page: let the sheet grow, then scale it
       const cs = getComputedStyle(ov), ah = ov.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom), aw = ov.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
       const h = Math.max(p.offsetHeight, p.scrollHeight) + 6, w = p.offsetWidth, k = Math.min(1, ah / h, aw / w);
       // a panel taller than the screen is laid out from the top edge, so it is scaled from the top and then centred in what is left
@@ -632,10 +634,105 @@ function tileArts() {
     art('drawShip', c, 0, 0, Object.assign({}, shipLook(), { t: 0.4, tilt: -0.12, thrust: 1, hurt: 0, shield: 0, beam: false })); c.restore();
   }
 }
+// =============================================================================================
+// v4.0 the long game on screen: contracts for the selected journey, the pilot sheet (rank, completion, backup)
+function rankEmblem(c, rank, size) {
+  c.setTransform(size / 96, 0, 0, size / 96, 0, 0); c.clearRect(0, 0, 96, 96); c.lineJoin = 'round'; c.lineCap = 'round';
+  const tier = Math.min(4, Math.floor((rank - 1) / 20)), col = ['#c9843c', '#c7cedb', '#ffd23f', '#5ef2ff', '#ff7ad1'][tier], dk = ['#8a4a14', '#7d879e', '#c9930f', '#1d8fa8', '#b3348a'][tier];
+  // wings
+  c.fillStyle = dk; c.strokeStyle = INK; c.lineWidth = 3.5;
+  for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(48 + sd * 22, 44); c.lineTo(48 + sd * 46, 30); c.lineTo(48 + sd * 40, 46); c.lineTo(48 + sd * 44, 58); c.lineTo(48 + sd * 22, 60); c.closePath(); c.fill(); c.stroke(); }
+  // shield
+  c.fillStyle = col; c.beginPath(); c.moveTo(22, 20); c.lineTo(74, 20); c.lineTo(74, 50); c.quadraticCurveTo(72, 74, 48, 86); c.quadraticCurveTo(24, 74, 22, 50); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = 'rgba(255,255,255,.4)'; c.beginPath(); c.moveTo(27, 25); c.lineTo(46, 25); c.lineTo(46, 78); c.quadraticCurveTo(29, 68, 27, 50); c.closePath(); c.fill();
+  c.fillStyle = INK; c.font = '800 ' + (rank >= 100 ? 24 : 30) + 'px ' + FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(nf(rank), 48, 51);
+}
+function missionPic(cnv, type, jid) {
+  const c = cnv.getContext('2d'), W2 = cnv.width, H2 = cnv.height; c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W2, H2);
+  c.fillStyle = '#211a48'; c.fillRect(0, 0, W2, H2); stars(c, W2, H2, 2 + type.length, 12, 0.6);
+  const fam = (M.FAMILY || {})[jid] || 'khurda', cx = W2 / 2, cy = H2 / 2;
+  c.save(); c.translate(cx, cy); c.lineJoin = 'round'; c.lineCap = 'round';
+  try {
+    if (type === 'rescue') { c.scale(2.3, 2.3); PZ.drawPod(c, 0, 0, 0.4, 0); }
+    else if (type === 'escort') { c.scale(1.9, 1.9); PZ.drawWard(c, { kind: 'tanker', x: 0, y: 0, hp: 8, max: 8, flash: 0 }, 0.4); }
+    else if (type === 'hold') { c.scale(1.05, 1.05); PZ.drawWard(c, { kind: 'station', x: 6, y: 12, hp: 18, max: 18, flash: 0 }, 0.4); }
+    else if (type === 'haul') { art('drawRock', c, { x: 0, y: 0, r: 46, rot: 0.3, seed: 5, kind: 'crystal', size: 'L', flash: 0 }); }
+    else if (type === 'bossrush') { rivalPic(c, fam, -28, 6, 96, { t: 0.3 }); rivalPic(c, 'y_' + fam, 46, -20, 60, { t: 0.6 }); }
+    else if (type === 'hunt') { rivalPic(c, fam, 0, 14, 104, { t: 0.3 }); c.fillStyle = '#ffd23f'; c.strokeStyle = INK; c.lineWidth = 4; c.beginPath(); c.moveTo(0, -42); c.lineTo(-16, -66); c.lineTo(16, -66); c.closePath(); c.fill(); c.stroke(); }
+    else if (type === 'time') {
+      c.fillStyle = '#fff8ea'; c.strokeStyle = INK; c.lineWidth = 6; c.beginPath(); c.arc(0, 6, 50, 0, TAU); c.fill(); c.stroke();
+      c.fillStyle = '#e23b4a'; c.beginPath(); c.roundRect(-9, -64, 18, 14, 4); c.fill(); c.stroke();
+      c.lineWidth = 7; c.beginPath(); c.moveTo(0, 6); c.lineTo(0, -26); c.moveTo(0, 6); c.lineTo(22, 16); c.stroke();
+      c.fillStyle = INK; for (let k = 0; k < 12; k++) { const a = k * TAU / 12; c.beginPath(); c.arc(Math.cos(a) * 40, 6 + Math.sin(a) * 40, k % 3 ? 2 : 3.6, 0, TAU); c.fill(); }
+    }
+    else { c.scale(1.9, 1.9); art('drawShip', c, 0, 0, Object.assign({}, shipLook(), { t: 0.4, tilt: -0.1, thrust: 1, hurt: 0, shield: 0, beam: false })); }
+  } catch (e) { console.error(e); }
+  c.restore();
+}
+function goalLabel(sp) {
+  const P = MM('mission', sp), G = P && P.mission && P.mission.goal, w = P && P.mission && P.mission.ward; if (!G) return '';
+  switch (G.kind) {
+    case 'rescued': return T('g_rescued', 0, G.need); case 'crystals': return T('g_crystals', 0, G.need); case 'bosses': return T('g_bosses', 0, G.need);
+    case 'kills': return T('g_kills', 0, G.need, Math.round(P.dur * 0.93)); case 'elite': return T('g_elite');
+    case 'protect': return T(w && w.kind === 'station' ? 'g_station' : 'g_tanker', w.hp, w.hp); default: return T('g_finish');
+  }
+}
+function sheetContracts(body) {
+  const jid = selJ, list = MM('contractList', jid) || [];
+  body.appendChild(el('p', 'hint', jName(jid) + ' · ' + T('ct_note')));
+  const g = el('div', 'cards ct-cards');
+  for (const sp of list) {
+    const cc = el('div', 'card ct' + (sp.done ? ' done' : '')), cnv = mk(192, 144); cnv.setAttribute('aria-hidden', 'true'); cc.appendChild(cnv);
+    setTimeout(() => missionPic(cnv, sp.type, jid), 10 + sp.ci * 20);
+    const nm = el('b', null, T('mt_' + sp.type)); if (sp.done) nm.appendChild(icon('check')); cc.appendChild(nm);
+    cc.appendChild(el('small', null, goalLabel(sp)));
+    if (sp.mut.length) { const ms = el('small', 'ct-mut'); ms.textContent = sp.mut.map(m => T('mu_' + m)).join(' · '); cc.appendChild(ms); }
+    const b = cardBtn({ text: T(sp.done ? 'ct_again' : 'ct_fly'), cls: sp.done ? 'sec' : '', onClick: () => { closeSheet(); stopTips(); if (hook('onMission', sp) === false) note(T('m_locked')); } });
+    const pay = el('span', 'ct-pay'); pay.appendChild(coinIc()); pay.append(nf(sp.reward)); b.appendChild(pay);
+    cc.appendChild(b); g.appendChild(cc);
+  }
+  body.appendChild(g);
+}
+function sheetPilot(body) {
+  const R = MM('rankInfo') || { rank: 1, xp: 0, to: 45, f: 0 }, C = MM('completion') || { parts: [], total: 0 };
+  // rank
+  const head = el('div', 'pl-head'), em = mk(192, 192); em.className = 'pl-em'; em.setAttribute('aria-hidden', 'true'); rankEmblem(em.getContext('2d'), R.rank, 192); head.appendChild(em);
+  const tx = el('div', 'pl-tx'); tx.appendChild(el('b', null, T('pl_rank', R.rank))); tx.appendChild(el('small', null, T('pl_xp', R.xp, R.to))); tx.appendChild(progBar(R.f));
+  tx.appendChild(el('b', 'pl-all', T('pl_all', Math.floor(C.total * 100)))); head.appendChild(tx); body.appendChild(head);
+  // completion, one bar per part
+  for (const p of C.parts) {
+    const row = el('div', 'mission pl-part' + (p.soon ? ' soon' : ''));
+    const t2 = el('div'); t2.appendChild(el('b', null, T('pl_' + (p.id === 'rank' ? 'rankp' : p.id)))); row.appendChild(t2);
+    row.appendChild(el('small', 'pl-pct', p.soon ? T('pl_soon') : nf(Math.floor(clamp(p.f, 0, 1) * 100)) + '%'));
+    row.appendChild(progBar(p.soon ? 0 : p.f)); body.appendChild(row);
+  }
+  // backup
+  const box = el('div', 'login-box bk'), hd = el('div', 'login-head'); const tl = el('div'); tl.appendChild(el('b', null, T('bk_title'))); tl.append(' · '); tl.appendChild(el('small', null, T('bk_note'))); hd.appendChild(tl); box.appendChild(hd);
+  const row = el('div', 'bk-row'), area = el('textarea', 'bk-area'); area.rows = 2; area.spellcheck = false; area.setAttribute('dir', 'ltr'); area.placeholder = T('bk_paste'); area.setAttribute('aria-label', T('bk_paste'));
+  const bSave = el('button', 'btn alt small'), bCopy = el('button', 'btn cream small'), bFile = el('button', 'btn cream small'), bLoad = el('button', 'btn small');
+  for (const b of [bSave, bCopy, bFile, bLoad]) b.type = 'button';
+  bSave.textContent = T('bk_save'); bCopy.textContent = T('bk_copy'); bFile.textContent = T('bk_file'); bLoad.textContent = T('bk_load'); bCopy.hidden = bFile.hidden = true;
+  bSave.onclick = () => { area.value = MM('exportSave') || ''; bCopy.hidden = bFile.hidden = false; bLoad.dataset.sure = ''; bLoad.textContent = T('bk_load'); area.focus(); area.select(); fitSoon(); };
+  bCopy.onclick = async () => { try { await navigator.clipboard.writeText(area.value); } catch (e) { area.focus(); area.select(); try { document.execCommand('copy'); } catch (e2) {} } note(T('bk_copied')); };
+  bFile.onclick = () => { try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([area.value], { type: 'text/plain' })); a.download = 'abood-space-backup.txt'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); } catch (e) { note(T('bk_damaged')); } };
+  bLoad.onclick = () => {
+    const code = area.value.trim(); if (!code) { area.focus(); return; }
+    if (bLoad.dataset.sure !== '1') { bLoad.dataset.sure = '1'; bLoad.textContent = T('bk_confirm'); fitSoon(); return; }
+    const r = MM('importSave', code) || { ok: false, reason: 'damaged' }; bLoad.dataset.sure = ''; bLoad.textContent = T('bk_load');
+    if (r.ok) { note(T('bk_ok'), 2600); hook('sfx', 'chime'); hook('onChar', CHAR()); closeSheet(); renderMenu(); } else note(T('bk_' + (r.reason || 'damaged')), 3200);
+  };
+  area.oninput = () => { bLoad.dataset.sure = ''; bLoad.textContent = T('bk_load'); };
+  row.appendChild(area); const btns = el('div', 'bk-btns'); for (const b of [bSave, bCopy, bFile, bLoad]) btns.appendChild(b); row.appendChild(btns); box.appendChild(row); body.appendChild(box);
+}
+function rankChip() {
+  const b = $('rankChip'); if (!b) return; const R = MM('rankInfo') || { rank: 1 };
+  let cv = b.querySelector('canvas'); if (!cv) { cv = mk(96, 96); cv.setAttribute('aria-hidden', 'true'); b.insertBefore(cv, b.firstChild); }
+  rankEmblem(cv.getContext('2d'), R.rank, 96); b.querySelector('span').textContent = T('pl_rank', R.rank); b.onclick = () => openSheet('pilot'); b.setAttribute('aria-label', T('pl_title') + ' · ' + T('pl_rank', R.rank));
+}
 // Usta's advice for a ship-level gate: "we need ship level 15, you have 13 · Usta recommends: Blaster"
 function gateText(need) {
   const rec = MM('recommend');
-  return T('m_need', need.need, need.have) + (rec ? ' ' + T('up_rec') + ': ' + T('up_' + rec) : '');
+  return (need.have < need.need ? T('m_need', need.need, need.have) + ' ' : '') + (need.cHave < need.cNeed ? T('m_needC', need.cNeed, need.cHave, jName(need.prev)) : '');
 }
 export function renderMenu() {
   ensureSel(); syncCoins(); syncMute();
@@ -653,7 +750,8 @@ export function renderMenu() {
     const pic = mk(224, 140); pic.setAttribute('aria-hidden', 'true'); b.appendChild(pic);
     const fill = () => { try { pic.getContext('2d').drawImage(thumb(j.planet || j.id, !open), 0, 0, 224, 140); } catch (e) {} };
     if (THUMBS.has((j.planet || j.id) + (open ? ':o' : ':l'))) fill(); else setTimeout(fill, 30 + i * 40);
-    if (gated) { const g = el('span', 'gate'); g.innerHTML = WRENCH_SVG; g.appendChild(el('span', null, T('m_needShort', need.need))); b.appendChild(g); }
+    if (gated) { const g = el('span', 'gate'); if (need.have < need.need) { g.appendChild(el('i', 'star on')); g.appendChild(el('span', null, nf(need.have) + '/' + nf(need.need))); } else { g.appendChild(icon('check')); g.appendChild(el('span', null, T('ct_btn', need.cHave, need.cNeed))); } b.appendChild(g); }
+    else if (open && done < 3) { const n2 = MM('journeyNeed', j.id); if (n2 && n2.rec > n2.ship) { const g = el('span', 'gate rec'); g.innerHTML = WRENCH_SVG; g.appendChild(el('span', null, nf(n2.rec))); g.title = T('m_rec', n2.rec, n2.ship); b.appendChild(g); } }
     else if (!open) { const lk = el('span', 'lock'); lk.innerHTML = LOCK_SVG; b.appendChild(lk); }
     if (done >= 3) { const ok = el('span', 'ok'); ok.appendChild(icon('check')); b.appendChild(ok); }
     b.appendChild(el('b', null, jName(j.id)));
@@ -663,6 +761,7 @@ export function renderMenu() {
     b.onclick = () => {
       if (strip.moved) return;
       if (!open) { note(lockTxt, gated ? 4200 : 1800); return; }
+      { const n2 = MM('journeyNeed', j.id); if (selJ !== j.id && done < 3 && n2 && n2.rec > n2.ship) note(T('m_rec', n2.rec, n2.ship), 3200); }
       if (selJ !== j.id) { selJ = j.id; selL = defaultLeg(j.id); hook('onSelect', selJ, selL); }
       renderMenu();
     };
@@ -686,6 +785,11 @@ export function renderMenu() {
     b.onclick = () => { if (!ok) return; selL = li; hook('onSelect', selJ, selL); renderMenu(); };
     row.appendChild(b);
   }
+  { const cl = MM('contractList', selJ) || [], cd = cl.filter(x => x.done).length, cb = el('button', 'leg ctr' + (cd >= cl.length && cl.length ? ' done' : '')); cb.type = 'button';
+    const cv = mk(96, 96); cv.className = 'tile-art'; cv.setAttribute('aria-hidden', 'true'); tileArt('missions', cv); cb.appendChild(cv);
+    const tx = el('span', 'ltx'); tx.appendChild(el('span', 'lname', T('ct_title'))); tx.appendChild(el('span', 'lrow', nf(cd) + '/' + nf(cl.length))); cb.appendChild(tx);
+    cb.setAttribute('aria-label', T('ct_btn', cd, cl.length)); cb.onclick = () => openSheet('contracts'); if (cl.length) row.appendChild(cb); }
+  rankChip();
   // v3 Hard tier: once a journey has all 12 medals, a switch next to Launch (faster, tougher, pays ×2)
   const hb = $('hardBtn'), hOpen = !!MM('hardOpen', selJ), hOn = hOpen && !!MM('hardOn', selJ);
   if (hb) {
@@ -796,7 +900,7 @@ function maybeLogin() {
 }
 const SHEETS = {
   hangar: ['hg_title', sheetHangar], costumes: ['cs_title', sheetCostumes], missions: ['ms_title', sheetMissions], duels: ['du_title', sheetDuels],
-  badges: ['bg_title', sheetBadges], help: ['help_title', sheetHelp],
+  badges: ['bg_title', sheetBadges], help: ['help_title', sheetHelp], contracts: ['ct_title', sheetContracts], pilot: ['pl_title', sheetPilot],
 };
 const SHEET_ALIAS = { suits: 'costumes', wardrobe: 'costumes', shop: 'hangar' };
 export function openSheet(kind) {
@@ -1469,7 +1573,8 @@ export function hud(s) {
   if (!s || !hudOn) return;
   if (s.canPause != null && (s.canPause !== false) !== canPause) setCanPause(s.canPause);
   if (s.rival) rivalHud(s.rival);
-  else if (s.jid && hc.trip !== s.jid + ':' + (s.li | 0)) { if (duelOn) setDuel(null); setTrip(s.jid, s.li | 0); }
+  else if (s.jid && hc.trip !== s.jid + ':' + (s.li | 0)) { if (duelOn) setDuel(null); setTrip(s.jid, s.li | 0); hc.goal = undefined; }
+  if (s.goal != null && !s.rival && s.goal !== hc.goal) { $('tripLeg').textContent = s.goal; hc.goal = s.goal; }
   const hp = Math.max(0, Math.round(s.hp ?? 0)), maxHp = Math.max(1, Math.round(s.maxHp ?? 3));
   if (hp !== hc.hp || maxHp !== hc.maxHp) pips(hp, maxHp);
   if (s.score !== hc.score) { $('hScore').textContent = nf(s.score | 0); hc.score = s.score; }
@@ -1605,7 +1710,7 @@ function runCount(r) {
 }
 // U1: never offer "Next" when it would replay the leg just flown
 function nextTarget(r) {
-  if (!r || !r.win || r.duel) return null;
+  if (!r || !r.win || r.duel || r.mission) return null;
   if (r.li < 2) return { jid: r.jid, li: r.li + 1, leg: true }; // finishing a leg always opens the next one
   const ji = M.journeyIndex(r.jid), nj = M.JOURNEYS[ji + 1];
   if (nj && M.isUnlocked(nj.id)) {
@@ -1638,6 +1743,7 @@ function fillResult(r, animate) {
   panel.classList.toggle('win', !!r.win); panel.classList.toggle('lose', !r.win); panel.classList.toggle('postcard', arrived); panel.classList.toggle('duel', duel);
   const run = r.run || {};
   if (duel) $('overTitle').textContent = r.win ? T('du_fixedTitle', rvName(r.rid)) : T('du_lose');
+  else if (r.mission) $('overTitle').textContent = r.win ? T('ms_winT') : T('ms_failT');
   else $('overTitle').textContent = !r.win ? T('r_fail') : arrived ? T('r_arrive', pName(planetId)) : T('r_win');
   if (animate || !r.botLine) r.botLine = TL(duel ? (r.win ? 'bot_duelWin' : 'bot_duelLose') : arrived ? 'bot_arrive' : r.win ? 'bot_win' : 'bot_lose');
   $('overBotTxt').textContent = r.botLine;
@@ -1648,7 +1754,8 @@ function fillResult(r, animate) {
   else if (r.newBest) msg = T('r_newBest');
   else if (run.noHit || run.hits === 0) msg = T('r_noHit');
   else msg = T('m_legOf', r.li, 3) + ' · ' + legName(r.jid, r.li);
-  if (!duel && r.win && +run.rescueTotal > 0) msg += ' · ' + T('r_rescued', Math.min(run.rescued | 0, run.rescueTotal | 0), run.rescueTotal | 0);
+  if (r.mission) msg = T('mt_' + r.mission.type) + ' · ' + (r.goalText || '') + (r.win && r.reward ? ' · ' + T('ct_reward', r.reward) : '');
+  else if (!duel && r.win && +run.rescueTotal > 0) msg += ' · ' + T('r_rescued', Math.min(run.rescued | 0, run.rescueTotal | 0), run.rescueTotal | 0);
   $('overMsg').textContent = msg;
   // stars (new ones pop in)
   const sb = $('overStars'); sb.innerHTML = '';
@@ -1738,6 +1845,7 @@ function fillResult(r, animate) {
 function rqItems(r, duel) {
   const out = [], picIcon = (name, cls) => box => { box.className = 'rq-pic ' + (cls || ''); box.innerHTML = svgI(name); };
   const picCanvas = (draw, cls) => box => { box.className = 'rq-pic cv ' + (cls || ''); box.innerHTML = ''; const cv = mk(96, 96); box.appendChild(cv); draw(cv); };
+  if (r.rankUp) out.push({ kick: () => T('pl_title'), title: () => T('r_rankUp', r.rankUp.rank), sub: () => T('bg_reward', r.rankUp.coins), pic: picCanvas(cv => rankEmblem(cv.getContext('2d'), r.rankUp.rank, 96), 'medal') });
   if (r.levelUp) out.push({ kick: () => T('rq_level'), title: () => T('ld_up', r.levelUp.lv, r.levelUp.mult, r.levelUp.reward), pic: picIcon('up', 'teal') });
   if (!duel && r.win && r.unlocked) out.push({ kick: () => T('rq_unlock'), title: () => jName(r.unlocked), sub: () => T('r_unlocked', jName(r.unlocked)),
     pic: picCanvas(cv => { try { const j = M.journey(r.unlocked); cv.getContext('2d').drawImage(thumb((j && j.planet) || r.unlocked, false), -24, 0, 144, 96); } catch (e) {} }, 'planet') });

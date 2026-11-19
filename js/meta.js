@@ -96,7 +96,7 @@
 //   loginReady() -> bool
 
 const KEY = 'abood-moon-v1';
-export const SCHEMA = 3;
+export const SCHEMA = 4;
 const pad = n => String(n).padStart(2, '0');
 export const today = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
 const dayNo = s => Math.round(new Date(s + 'T12:00:00').getTime() / 864e5);
@@ -658,6 +658,133 @@ export const parOf = R => R ? Math.round((R.par || 60) * (BOSS_RIG[R.id] ? 1.6 :
 
 // ---- badges ----
 // tiered: bronze -> silver -> gold, each a bigger goal with a bigger reward (golds land around days 55-75)
+
+// =============================================================================================
+// v4.0 the long game. A 30-hour story and about 250 hours to finish everything (LONG). The hours come from many different
+// MISSIONS built fresh from a seed (mission()), from CONTRACTS on every journey, and from long goals (rank, completion).
+// Planets no longer open by saving coins for a ship level: they open by STARS and CONTRACTS (GATE). `need` on a journey is
+// now only the recommended ship level (Usta's advice, and what threat() measures the ship against).
+export const LONG = { story: 30, hard: 20, expeditions: 80, families: 40, ship: 50, rank: 30 };   // hours per part, 250 in all
+export const MISSION_TYPES = ['fly', 'rescue', 'escort', 'hold', 'haul', 'bossrush', 'time', 'hunt'];
+export const MUTATORS = ['traffic', 'noShield', 'glass', 'fastShots', 'dark', 'gravity', 'wind', 'swarm', 'elites', 'quickPower'];
+// what opens a journey: [stars in total, contracts done on the journey before]
+const GATE = { mars: [4, 2], venus: [10, 3], belt: [18, 4], jupiter: [26, 4], saturn: [34, 5], uranus: [42, 5], neptune: [50, 6] };
+const C_MOON = [['fly'], ['rescue'], ['haul'], ['time'], ['rescue', 'traffic'], ['haul', 'wind']];   // no robots on the Moon
+const MUT_ROT = ['fastShots', 'noShield', 'traffic', 'dark', 'glass', 'elites', 'wind', 'gravity'];
+const hash32 = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0; };
+const contractDefs = jid => {
+  const j = journeyIndex(jid); if (j < 0) return [];
+  if (j === 0) return C_MOON;
+  return [['rescue'], ['haul'], ['time'], [j % 2 ? 'escort' : 'hold'], ['hunt', MUT_ROT[j % 8]], ['bossrush', MUT_ROT[(j + 3) % 8]]];
+};
+export const contractSpec = (jid, ci) => { const d = contractDefs(jid)[ci]; return d ? { id: jid + ':c' + ci, jid, ci, type: d[0], mut: d.slice(1), seed: hash32(jid + ':c' + ci), depth: 0 } : null; };
+export function contractList(jid) {
+  return contractDefs(jid).map((d, ci) => { const sp = contractSpec(jid, ci), rec = S.contracts[sp.id]; return Object.assign(sp, { done: !!rec, wins: rec ? rec.w | 0 : 0, reward: contractPay(jid, ci, !rec) }); });
+}
+export const contractsDone = jid => contractDefs(jid).reduce((a, d, ci) => a + (S.contracts[jid + ':c' + ci] ? 1 : 0), 0);
+export const contractTotal = () => JOURNEYS.reduce((a, j) => a + contractDefs(j.id).length, 0);
+const contractPay = (jid, ci, first) => Math.round(legPay(journeyIndex(jid), 1) * (first ? 1.5 + ci * 0.15 : 0.5));
+
+// A mission: a short flight with a GOAL, built from a seed out of the same beats the legs use (game.js beat()).
+//   spec: { jid (theme and family), type, seed, depth (0 = the journey's own curve, +4 = one journey harder), mut: [], len? }
+//   goal kinds: finish | rescued n | protect (tanker, station) | crystals n | bosses | kills n (machines, not rocks) | elite
+export function mission(spec) {
+  const j = journeyIndex(spec.jid); if (j < 0) return null;
+  const J = JOURNEYS[j], L = J.legs[1], F = FLAV[spec.jid] || FLAV.moon, type = MISSION_TYPES.includes(spec.type) ? spec.type : 'fly', mut = (spec.mut || []).filter(m => MUTATORS.includes(m)), depth = spec.depth | 0;
+  const R = rng((spec.seed >>> 0) || 1), any = a => a[Math.floor(R() * a.length)];
+  const C = Object.assign({}, curve(clamp(j + Math.floor(depth / 4), 0, CURVE.length - 1), clamp(depth % 4, 0, 2), false));
+  const D = spec.len || { fly: 95, rescue: 100, escort: 105, hold: 95, haul: 85, bossrush: 14, time: 75, hunt: 100 }[type];
+  const r = f => Math.round(f * D), beats = [], assist = Object.assign({}, J.assist || {}), tr = mut.includes('traffic') ? 1.7 : 1, el = mut.includes('elites');
+  const wave = (f, n = C.n, e = 0) => { if (C.robots) beats.push({ t: r(f), kind: 'wave', form: 'robots', n: Math.max(1, n), elite: el ? n : e }); else beats.push(...piece(R() < 0.5 ? 'squad' : 'line', r(f), j, 1, D)); };
+  const pc = (name, f) => beats.push(...piece(name, r(f), j, 1, D));
+  const fill = (rate, mix) => beats.push({ t: 1, kind: 'filler', dur: r(0.92), rate: rate * tr, mix: mix || null });
+  const sets = [...F.mid, ...F.twist].filter(n => n !== 'grabber'), waves = [...F.waveA, ...F.waveB];
+  let goal = { kind: 'finish' }, rescueTotal = 0, ward = null;
+  beats.push({ t: 0, kind: 'meteorsOff', dur: r(0.2) });
+  if (type !== 'bossrush') beats.push({ t: r(0.34), kind: 'carrier' });
+  if (type === 'fly') { fill(1); wave(0.18); pc(any(sets), 0.34); wave(0.52, C.n, 1); pc(any(waves), 0.66); wave(0.8, C.n + 1, 1); beats.push({ t: r(0.45), kind: 'pods', n: 1, over: 1 }); rescueTotal = 1;
+    if (L.meteor) beats.push({ t: r(0.4), kind: 'meteors', dur: r(0.3), gap: L.meteor, pair: 0 }); }
+  else if (type === 'rescue') { const need = clamp(4 + Math.floor(depth / 2), 4, 7); rescueTotal = need + 2; goal = { kind: 'rescued', need };
+    fill(0.8); for (let i = 0; i < rescueTotal; i++) beats.push({ t: r(0.1 + 0.76 * i / (rescueTotal - 1)), kind: 'pods', n: 1, over: 1 });
+    wave(0.22); wave(0.5, C.n, 1); wave(0.78, C.n + 1, 1); pc(any(waves), 0.36); }
+  else if (type === 'escort') { ward = { kind: 'tanker', hp: 8 + j }; goal = { kind: 'protect' }; fill(0.9); wave(0.14); pc('squad', 0.3); wave(0.42, C.n, 1); wave(0.62, C.n + 1, 1); pc('squad', 0.72); wave(0.84, C.n + 1, 1); }
+  else if (type === 'hold') { ward = { kind: 'station', hp: 18 + j * 2 }; goal = { kind: 'protect' }; fill(0.45); for (let i = 0; i < 6; i++) wave(0.1 + i * 0.14, C.n + (i > 2 ? 1 : 0), i > 3 ? 1 : 0); pc('cascade', 0.5); pc('squad', 0.62); }
+  else if (type === 'haul') { goal = { kind: 'crystals', need: 18 + j * 2 + depth * 2 }; fill(1.3, { crystal: 2, rockS: 4, rockM: 2 }); wave(0.3); wave(0.7, C.n, 1); pc(any(sets), 0.5); }
+  else if (type === 'time') { // machines only (rocks do not count): eight waves, and about half of what flies in must be fixed before the clock runs out
+    let tot = 0; for (let i = 0; i < 8; i++) { const n = C.n + (i > 2 ? 1 : 0); tot += n; wave(0.08 + i * 0.11, n, i > 4 ? 1 : 0); }
+    goal = { kind: 'kills', need: C.robots ? Math.round(tot * 0.4) + 4 : 18 }; fill(1.4); pc('line', 0.25); pc('line', 0.5); }
+  else if (type === 'hunt') { goal = { kind: 'elite', need: 1 }; fill(0.7); for (const f of [0.28, 0.54, 0.8]) beats.push({ t: r(f), kind: 'hunt' }); wave(0.1, Math.max(1, C.n - 1)); wave(0.42, Math.max(1, C.n - 1)); wave(0.68, C.n); pc(any(sets), 0.6); }
+  else { // bossrush: the family's young one, then the grown one, back to back
+    const G = GUARDIANS[spec.jid] || [], a = G[0] ? G[0].id : 'g_neptune_c', b = G[1] ? G[1].id : 'kabeer'; goal = { kind: 'bosses', need: 2 };
+    beats.push({ t: 1, kind: 'filler', dur: D, rate: 0 }, { t: 1, kind: 'meteorsOff', dur: D * 3 });
+    beats.push({ t: 2, kind: 'warn', boss: a }, { t: 4, kind: 'boss', id: a, kind2: 'guardian', scale: 0.7, final: false, guard: true });
+    beats.push({ t: 4.5, kind: 'relief', pick: 'repair', n: 1 }, { t: 5, kind: 'warn', boss: b }, { t: D - 0.5, kind: 'boss', id: b, kind2: 'guardian', scale: 0.8, final: true });
+  }
+  if (type !== 'bossrush') { beats.push({ t: r(0.93), kind: 'filler', dur: D, rate: 0 }, { t: r(0.93), kind: 'meteorsOff', dur: D }); }
+  beats.sort((x, y) => x.t - y.t);
+  const mods = []; if (mut.includes('dark')) mods.push('dark'); if (mut.includes('gravity')) mods.push('magnet'); if (mut.includes('wind')) mods.push('wind');
+  return { jid: spec.jid, li: 1, hard: false, dur: D, star: 1e12, speedScale: assist.speedScale || 1, warnPlus: assist.warnPlus || 0, assist, hpMul: L.hp > 0 ? L.hp : 1,
+    beats, rescueTotal, boss: null, bossAtk: assist.bossAtk || 1, curve: C, mods,
+    mission: { id: spec.id || null, jid: spec.jid, ci: spec.ci, type, goal, mut, seed: spec.seed, depth, ward } };
+}
+// settle a mission: coins picked are always kept; a contract pays its prize (more the first time) and counts for the gates
+export function finishMission(spec, run = {}, win = false) {
+  const e = endLike(run, !win), id = spec && spec.id, jid = spec && spec.jid, first = !!(win && id && !S.contracts[id]);
+  let reward = 0, xp = 0, rankUp = null;
+  if (win && id) {
+    reward = contractPay(jid, spec.ci | 0, first); pay(reward);
+    const rec = S.contracts[id] || (S.contracts[id] = { w: 0, d: today() }); rec.w = (rec.w | 0) + 1;
+    S.stats.contracts = (S.stats.contracts | 0) + 1;
+  }
+  if (win) { const g = gainXp(first ? 140 : 45); xp = g.xp; rankUp = g.rankUp; }
+  const nx = JOURNEYS[journeyIndex(jid) + 1], unlocked = win && nx && legsDone(jid) >= 3 && isUnlocked(nx.id) && !S.seen['open_' + nx.id] ? nx.id : null;
+  if (unlocked) S.seen['open_' + nx.id] = today();
+  save();
+  return { reward, bonus: 0, picked: e.kept, total: reward + e.kept, journeyDone: false, unlocked, first, newBest: false, best: 0, badges: e.badges, missions: e.missions,
+    stars: null, newStars: [], starPay: 0, coinMult: e.coinMult, levelUp: e.levelUp, girl: e.girl, gate: null, played: true, xp, rankUp, contract: id, done: contractsDone(jid) };
+}
+
+// ---- pilot rank: XP from everything; rank n needs 45 × n² XP in total (rank 100 is about the whole 250 hours) ----
+export const RANK_MAX = 100;
+export const rankOf = (xp = S.xp) => clamp(Math.floor(Math.sqrt(Math.max(0, +xp || 0) / 45)) + 1, 1, RANK_MAX);
+export const rankInfo = () => { const r = rankOf(), a = 45 * (r - 1) * (r - 1), b = 45 * r * r; return { rank: r, xp: Math.floor(+S.xp || 0), from: a, to: b, f: r >= RANK_MAX ? 1 : clamp(((+S.xp || 0) - a) / (b - a), 0, 1) }; };
+function gainXp(n) {
+  const r0 = rankOf(); S.xp = Math.max(0, (+S.xp || 0) + Math.round(n)); const r1 = rankOf();
+  let rankUp = null; if (r1 > r0) { let coins = 0; for (let k = r0 + 1; k <= r1; k++) coins += 40 + 20 * k; pay(coins); rankUp = { rank: r1, coins }; }
+  return { xp: Math.round(n), rankUp };
+}
+// ---- completion: how much of everything is done, weighted by the hours each part is meant to take ----
+export function completion() {
+  const legsN = JOURNEYS.length * 3, legs = JOURNEYS.reduce((a, j) => a + legsDone(j.id), 0), cT = contractTotal(), cD = JOURNEYS.reduce((a, j) => a + contractsDone(j.id), 0);
+  const upT = UPGRADES.reduce((a, u) => a + u.max, 0);
+  const parts = [
+    { id: 'story', hours: LONG.story, f: (legs + cD) / (legsN + cT) },
+    { id: 'hard', hours: LONG.hard, f: (starTotal() + medalTotal()) / (legsN * 3 + legsN * 4) },
+    { id: 'ship', hours: LONG.ship, f: totalLevels() / upT * 0.4 },                 // Marks and power levels (v4.2) are the other 60%
+    { id: 'rank', hours: LONG.rank, f: (rankOf() - 1) / (RANK_MAX - 1) },
+    { id: 'expeditions', hours: LONG.expeditions, f: 0, soon: true },
+    { id: 'families', hours: LONG.families, f: 0, soon: true },
+  ];
+  const tot = parts.reduce((a, p2) => a + p2.hours, 0);
+  return { parts, total: parts.reduce((a, p2) => a + p2.hours * clamp(p2.f, 0, 1), 0) / tot };
+}
+// ---- backup: the whole save as a code the player can keep and load on any device ----
+const b64e = str => { const bytes = new TextEncoder().encode(str); let bin = ''; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const b64d = code => { const bin = atob(code.replace(/-/g, '+').replace(/_/g, '/')); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new TextDecoder().decode(bytes); };
+export function exportSave() { save(); const body = b64e(JSON.stringify(S)); return 'ABOOD' + SCHEMA + '.' + body + '.' + hash32(body).toString(36); }
+export function importSave(code) {
+  try {
+    const m = /^ABOOD(\d+)\.([A-Za-z0-9_-]+)\.([a-z0-9]+)$/.exec(String(code || '').replace(/\s+/g, ''));
+    if (!m) return { ok: false, reason: 'format' };
+    if (hash32(m[2]).toString(36) !== m[3]) return { ok: false, reason: 'damaged' };
+    if (+m[1] > SCHEMA) return { ok: false, reason: 'newer' };
+    const d = JSON.parse(b64d(m[2])); if (!isObj(d) || !isObj(d.prog) || !(+d.coins >= 0)) return { ok: false, reason: 'damaged' };
+    try { store.set(KEY + '.before-import', JSON.stringify(S)); } catch (e2) { /* no room: the import still goes ahead */ }
+    store.set(KEY, JSON.stringify(d)); load(); save();
+    return { ok: true, rank: rankOf(), coins: S.coins };
+  } catch (e) { return { ok: false, reason: 'damaged' }; }
+}
+
 export const TIER_REWARD = [20, 200, 2000];
 export const BADGES = [
   { id: 'first', reward: 10, life: s => s.runs >= 1 },                       // first flight
@@ -727,13 +854,15 @@ const fresh = () => ({
   skin: 'falak', skins: ['falak'], prog: {}, best: {}, stars: {}, medals: {}, hardOn: {}, stats: STAT0(), badges: {}, tiers: {},
   daily: null, ladder: null, duel: {}, duelDay: null, boost: BOOST0(), armed: [], away: null, welcome: null, girlSeen: false,
   login: { last: null, streak: 0 }, settings: { muted: false, lang: 'ar', picked: false, quality: null, fps: 60 }, seen: {}, last: null,
+  // v4: the long game
+  xp: 0, contracts: {}, open: {}, exp: {}, mastery: {}, codex: {}, parts: 0, marks: {}, pwLv: {},
 });
 let S = fresh();
 let live = {};          // what track() counted during the current run
 let doneQ = [];         // missions finished since the game last asked
 let runBoost = null;    // the boosters launchBoosters() used for the current run (read at settlement)
 
-const MAPS = ['up', 'prog', 'best', 'badges', 'tiers', 'seen', 'stars', 'duel', 'wear', 'boost', 'medals', 'hardOn'];
+const MAPS = ['up', 'prog', 'best', 'badges', 'tiers', 'seen', 'stars', 'duel', 'wear', 'boost', 'medals', 'hardOn', 'contracts', 'open', 'exp', 'mastery', 'codex', 'marks', 'pwLv'];
 function load() {
   let raw = null, d = null;
   try {
@@ -750,8 +879,18 @@ function load() {
     for (const k of MAPS) if (!isObj(S[k])) S[k] = k === 'wear' ? Object.assign({}, START_WEAR) : k === 'boost' ? BOOST0() : {};
     if (v1) migrateV1(d);
     if (!(+d.v >= 3)) migrateV2(d);
+    if (!(+d.v >= 4)) migrateV3(d);
   }
   tidy();
+}
+// v3 -> v4: planets open by stars and contracts now. Nothing is taken away: every journey the old ship-level rule had
+// already opened stays open (S.open), and the pilot starts with the XP their flights so far are worth.
+function migrateV3(d) {
+  S.xp = 0; S.contracts = {}; S.open = {}; S.exp = {}; S.mastery = {}; S.codex = {}; S.parts = 0; S.marks = {}; S.pwLv = {};
+  const lv = UPGRADES.reduce((a, u) => a + clamp(Math.floor(+(S.up || {})[u.id] || 0), 0, u.max), 0);
+  for (let j = 1; j < JOURNEYS.length; j++) { const J = JOURNEYS[j], prev = JOURNEYS[j - 1]; if ((+(S.prog || {})[prev.id] || 0) >= 3 && (lv >= (J.need || 0) || (+(S.prog || {})[J.id] || 0) >= 1)) S.open[J.id] = true; }
+  const st = S.stats || {}; S.xp = Math.round((+st.legs || 0) * 100 + (+st.bossesFixed || 0) * 60 + (+st.duelWins || 0) * 40 + (+st.missions || 0) * 20);
+  S.mig = { from: Math.max(1, +(d.v || 1)), date: today() };
 }
 // v2 -> v3: legs got medals (seeded from the finish star in tidy()) and the rogue ships moved into the journeys. A rival
 // already beaten in the arena stays beaten, so the journey pays nothing twice. Nothing is removed.
@@ -1024,20 +1163,23 @@ const runCoinMult = () => r2(mult() + (costume().eff.coinPlus || 0) + (runBoost 
 
 // ---- progress, gates, stars ----
 export const legsDone = jid => S.prog[jid] || 0;
+// v4: a journey opens when the one before is finished AND the pilot has enough stars AND enough of that journey's
+// contracts are done. `need`/`have` are stars now; `rec` is the recommended ship level (advice, not a lock).
 export function journeyNeed(jid) {
-  const j = journey(jid), need = j ? j.need || 0 : 0, have = shipLevel();
-  return { need, have, ok: have >= need };
+  const j = journeyIndex(jid), J = JOURNEYS[j], g = GATE[jid] || [0, 0], prev = j > 0 ? JOURNEYS[j - 1].id : null;
+  const have = starTotal(), cHave = prev ? contractsDone(prev) : 0;
+  return { need: g[0], have, cNeed: g[1], cHave, prev, rec: J ? J.need || 0 : 0, ship: shipLevel(), ok: have >= g[0] && cHave >= g[1] };
 }
 export function isUnlocked(jid) {
   const j = journeyIndex(jid); if (j < 0) return false; if (j === 0) return true;
-  return legsDone(JOURNEYS[j - 1].id) >= 3 && (shipLevel() >= (JOURNEYS[j].need || 0) || legsDone(jid) >= 1);
+  return legsDone(JOURNEYS[j - 1].id) >= 3 && (journeyNeed(jid).ok || legsDone(jid) >= 1 || !!S.open[jid]);
 }
 export const canPlay = (jid, li) => isUnlocked(jid) && li >= 0 && li < 3 && li <= legsDone(jid);
 export const planetsDone = () => JOURNEYS.filter(j => legsDone(j.id) >= 3).length;
 export function nextGate() {
   for (let j = 1; j < JOURNEYS.length; j++) {
     const J = JOURNEYS[j];
-    if (legsDone(JOURNEYS[j - 1].id) >= 3 && !isUnlocked(J.id)) { const n = journeyNeed(J.id); return { jid: J.id, need: n.need, have: n.have, left: n.need - n.have }; }
+    if (legsDone(JOURNEYS[j - 1].id) >= 3 && !isUnlocked(J.id)) { const n = journeyNeed(J.id); return { jid: J.id, need: n.need, have: n.have, left: Math.max(0, n.need - n.have), cLeft: Math.max(0, n.cNeed - n.cHave) }; }
   }
   return null;
 }
@@ -1277,15 +1419,16 @@ export function finishLeg(jid, li, run = {}) {
   S.stats.legs += 1; if (noHit) S.stats.noHit += 1; if (full) S.stats.fullHull += 1; if (li === 2) S.stats.planets += 1;
   addKind('legs', 1); if (noHit) addKind('noHit', 1); if (full) addKind('fullHull', 1); if (li === 2) addKind('planet', 1);
   pay(reward + bonus + picked + starPay + medalPay + bossReward);
+  const gx = gainXp(100 + (first ? 60 : 0) + newStars.length * 40 + newMedals.length * 25 + bossFixed.length * 60 + (hard ? 60 : 0));
   S.last = { jid, li };
   const b = bestOf(jid, run);
   const nx = JOURNEYS[j + 1];
   const unlocked = journeyDone && nx && isUnlocked(nx.id) ? nx.id : null;
-  const gate = journeyDone && nx && !unlocked ? (n => ({ jid: nx.id, need: n.need, have: n.have, left: n.need - n.have }))(journeyNeed(nx.id)) : null;
+  const gate = journeyDone && nx && !unlocked ? (n => ({ jid: nx.id, need: n.need, have: n.have, left: Math.max(0, n.need - n.have), cLeft: Math.max(0, n.cNeed - n.cHave) }))(journeyNeed(nx.id)) : null;
   const c = close();
   return { reward, bonus, picked, total: reward + bonus + picked + starPay + medalPay + bossReward, journeyDone, unlocked, first, newBest: b.newBest, best: b.best,
     badges: c.badges, missions: c.missions, stars: bits(S.stars[key]), newStars, starPay, coinMult: cm, levelUp: c.levelUp, girl: c.girl, gate, played: true,
-    medals: bits4(S.medals[key]), newMedals, medalPay, bossReward, bossUnlock, bossFixed, hard, hardOpen: hardOpen(jid), star: starGoal };
+    medals: bits4(S.medals[key]), newMedals, medalPay, bossReward, bossUnlock, bossFixed, hard, hardOpen: hardOpen(jid), star: starGoal, xp: gx.xp, rankUp: gx.rankUp };
 
 }
 // a failed (or abandoned) leg: the picked coins are kept

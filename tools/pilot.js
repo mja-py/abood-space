@@ -18,7 +18,8 @@ export async function fly(jid, li, lv, opt = {}) {
   D.up = {}; for (const id of M.USTA_ORDER.slice(0, lv)) D.up[id] = (D.up[id] || 0) + 1;
   for (const u of M.UPGRADES) if ((D.up[u.id] || 0) > u.max) D.up[u.id] = u.max;
   D.armed = []; d.invincible = false; errs.length = 0;
-  g.start(jid, li); const w = d.world(), s = w.ship, dt = 1 / 60;
+  if (opt.spec) d.mission(opt.spec); else g.start(jid, li);
+  const w = d.world(), s = w.ship, dt = 1 / 60; let goal = null;
   let steps = 0, I = null; const fights = []; let cur = null, hits0 = 0;
   const danger = (x, y) => {
     let k = 0;
@@ -42,7 +43,9 @@ export async function fly(jid, li, lv, opt = {}) {
   while (steps < max) {
     if (steps % 4 === 0 && s.alive) {
       const rv = d.world().rv; let ty = rv ? rv.y : s.y, bd = 1e9;
-      if (!rv) for (const o of w.objs) if (!o.dead && o.x > s.x + 30 && o.x < w.W && !o.harmless) { const dd = (o.x - s.x) + Math.abs(o.y - s.y) * 2; if (dd < bd) { bd = dd; ty = o.y; } }
+      const ward = d.goal && d.goal() && d.goal().ward ? d.world().ward : null;
+      if (!rv) for (const o of w.objs) if (!o.dead && o.x > s.x + 30 && o.x < w.W && !o.harmless) { let dd = (o.x - s.x) + Math.abs(o.y - s.y) * 2; if (ward && Math.abs(o.y - ward.y) < ward.r + o.r + 10) dd -= 260; if (o.hunt) dd -= 600; if (dd < bd) { bd = dd; ty = o.y; } }
+      for (const p of w.picks) if (!p.dead && p.kind === 'pod' && p.x > s.x - 40 && p.x < s.x + 330) { ty = p.y; break; }   // go and get the stranded robot
       let best = null, bs = 1e9;
       for (let y = w.Y_MIN + 6; y <= w.Y_MAX - 6; y += 20) for (const x of xs) {
         const sc = danger(x, y) * 100 + Math.abs(y - ty) * 0.25 + Math.abs(y - s.y) * 0.12 + Math.abs(x - s.x) * 0.1 + Math.abs(x - xs[1]) * 0.03;
@@ -51,14 +54,14 @@ export async function fly(jid, li, lv, opt = {}) {
       if (best) { s.tx = best[0]; s.ty = best[1]; }
     }
     try { d.step(dt, 1); } catch (e) { errs.push(String(e)); break; } steps++;
-    if (g.state() !== 'play') break; I = d.info();
+    if (g.state() !== 'play') break; I = d.info(); if (opt.spec) goal = d.goal();
     if (I.boss && I.ds === 'fight' && (!cur || cur.id !== I.boss)) { cur = { id: I.boss, t0: steps, t1: null, h0: I.hits }; fights.push(cur); }
     if (cur && cur.t1 == null && (I.ds === 'fixed' || !I.boss)) { cur.t1 = steps; cur.hits = I.hits - cur.h0; }
     if (!fights.length) hits0 = I.hits;
     if (I.superF >= 1 && cur && cur.t1 == null && I.ds === 'fight') d.super();
   }
   I = I || {};
-  return { leg: jid + (li + 1), lv, st: g.state(), secs: Math.round(steps / 60), legHits: hits0, hits: I.hits | 0, deaths: I.deaths | 0,
+  return { goal, leg: opt.spec ? opt.spec.jid + ':' + opt.spec.type : jid + (li + 1), lv, st: g.state(), secs: Math.round(steps / 60), legHits: hits0, hits: I.hits | 0, deaths: I.deaths | 0,
     fights: fights.map(f => f.id.replace(/^g_/, '') + ':' + Math.round(((f.t1 || steps) - f.t0) / 60) + 's' + (f.t1 ? '' : '!') + '/' + (f.hits == null ? I.hits - f.h0 : f.hits) + 'h').join(' '),
     hp: I.hp + '/' + I.maxHp, threat: d.threat && +(+d.threat()).toFixed(2), log: (I.hitLog || []).join(','), errs: errs.slice(0, 2) };
 }
@@ -77,3 +80,17 @@ export function sweep(levels, legs = [0, 1, 2], js = JS, opt = {}) {
   return 'started';
 }
 export const result = () => RES || ('PARTIAL\n' + PROG.join('\n'));
+// missions: P.missions('belt', 15, [1, 2, 3]) flies every mission type on those seeds in the background; read P.result()
+export function missions(jid, lv, seeds = [1], types = null, depth = 0, mut = []) {
+  RES = null; PROG = [];
+  (async () => {
+    const M = await import('/js/meta.js?v=__BUILD__');
+    for (const type of (types || M.MISSION_TYPES)) for (const seed of seeds) {
+      const r = await fly(jid, 1, lv, { spec: { jid, type, seed, depth, mut } });
+      PROG.push(`${r.leg} seed${seed} ${r.st === 'arrive' ? 'WON' : r.st} t${r.secs} hits${r.hits} hp${r.hp} goal[${r.goal ? r.goal.text + (r.goal.met ? ' met' : ' NOT met') : '-'}]${r.fights ? ' | ' + r.fights : ''}${r.errs.length ? ' ERR ' + r.errs[0] : ''}`);
+      await new Promise(r2 => setTimeout(r2, 0));
+    }
+    RES = PROG.join('\n');
+  })();
+  return 'started';
+}

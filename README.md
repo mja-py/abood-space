@@ -195,6 +195,35 @@ children's journey.
 - Time to finish (estimate from payouts and the test pilot): about 8 to 10 hours to Neptune, of which about 2 hours
   is first-time flying and the rest is replays to save for the ship-level gates.
 
+## The long game, step 1 (v4.0)
+
+The owner expected 250 hours of play; the game held about 8 to 10. The agreed plan is a story of about 30 hours and about
+250 hours to finish everything, from generated missions, deep progression and new places, with no planet locked behind
+saved coins. v4.0 is the foundation; expeditions (v4.1), mastery and ship Marks (v4.2) and four new places (v4.3, v4.4)
+follow. The plan is in `LONG` (hours per part) in `js/meta.js`.
+
+- **Mission generator** (`mission(spec)` in `js/meta.js`): a short flight with a goal, built from a seed out of the same
+  beats the legs use. Eight types: patrol, rescue run, escort the tanker, hold the line (a station), crystal haul, boss
+  rush, time attack (machines, not rocks), hunt the elite. Ten mutators: heavy traffic, no shield, glass hull, fast
+  shots, dark sector, heavy gravity, solar wind, swarm only, elites only, quick power.
+  In `js/game.js`: `goalText()`, `goalMet()`, `missionTick()`, the protected ship `run.ward` (`updateWard`), the hunted
+  elite, `applyMutators()`. A goal that is met ends the flight early; a missed goal or a lost tanker fails it.
+- **Contracts:** six per journey (48), fixed seeds. The menu's leg row has a Contracts button for the selected journey.
+- **Gates:** a journey opens with stars in total and contracts done on the journey before (`GATE`), not ship level.
+  The old `need` is now Usta's recommended ship level (a wrench chip on the journey card when the ship is below it).
+- **Pilot rank** 1 to 100 (`rankOf`, 45 x rank² XP) and a **completion** screen with a bar per part (`completion()`).
+  Tap the rank chip on the pilot's picture.
+- **Backup code** (`exportSave`, `importSave`): the save as a code or a file, with a checksum; a damaged or newer code
+  is refused, and loading asks twice.
+- **Save** is schema 4 (`migrateV3`): nothing is removed, journeys the old rule had opened stay open, XP is seeded
+  from past flights.
+- **Tools:** `tools/pilot.js` flies missions (`P.missions('belt', 15, [1, 2])`), `node tools/econ.mjs` reports the
+  story's length from measured flight times and the gate table.
+
+What the simulator says today (`node tools/econ.mjs`): the story takes about 4 hours for a skilled player, 6 for a
+typical one and 9 for a learner. That is short of the 30-hour target: the rest has to come from more contracts per
+journey and the four new places, and the 250 hours from the parts that are not built yet.
+
 ## Screens and layout (v3.2)
 
 - **One play-field shape everywhere.** The field is always about 2.15:1, the shape of a phone held sideways. iPads,
@@ -276,6 +305,7 @@ js/ui.js                      menus, hangar, suits, missions, badges, results, H
 js/meta.js                    save, journeys, leg plans (timelines), assist profiles, guardians, economy, upgrades, missions, badges
 js/bosses.js                  the boss brain (senses, move choice, memory, family stages, giant moves) and the nine boss styles
 tools/pilot.js                dev tool: a test pilot that flies legs and reports hits and fight lengths (not loaded by the game)
+tools/econ.mjs                dev tool: the hour-budget simulator (node tools/econ.mjs)
 js/pieces.js                  drawing for the set pieces: turrets, grabber, tether, station walls, rescue pods, solar flare
 js/i18n.js                    Arabic + English text
 sw.js, manifest.webmanifest   offline + install (landscape, fullscreen)

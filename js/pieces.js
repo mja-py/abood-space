@@ -194,6 +194,36 @@ export function drawRageBot(c, o, t = 0) {
   }
 }
 
+// v4.0 the thing a mission protects: a fuel tanker that flies with the ship, or a station module at the left edge (w.flash on hit)
+export function drawWard(c, w, t = 0) {
+  if (w.hp <= 0) return;
+  c.save(); c.translate(w.x, w.y + Math.sin(t * 1.7) * 2); c.lineJoin = 'round'; c.lineCap = 'round'; c.strokeStyle = INK; c.lineWidth = 2.2;
+  const hit = w.flash > 0.5;
+  if (w.kind === 'station') {
+    c.fillStyle = '#2f5fc0'; for (const sd of [-1, 1]) { c.beginPath(); c.roundRect(-52, sd * 58 - 16, 70, 32, 4); c.fill(); c.stroke(); c.save(); c.strokeStyle = 'rgba(200,225,255,.6)'; c.lineWidth = 1; c.beginPath(); for (let i = 1; i < 5; i++) { c.moveTo(-52 + i * 14, sd * 58 - 14); c.lineTo(-52 + i * 14, sd * 58 + 14); } c.stroke(); c.restore(); }
+    c.fillStyle = '#7d879e'; c.beginPath(); c.roundRect(-10, -52, 12, 104, 4); c.fill(); c.stroke();
+    c.fillStyle = hit ? '#ffffff' : '#e6e9f0'; c.beginPath(); c.roundRect(-44, -30, 78, 60, 16); c.fill(); c.stroke();
+    c.fillStyle = 'rgba(40,30,60,.14)'; c.beginPath(); c.roundRect(-44, 14, 78, 16, 8); c.fill();
+    c.fillStyle = '#ff8a2a'; c.fillRect(-14, -30, 9, 60); c.fillStyle = '#16141c'; for (const y of [-12, 10]) { c.beginPath(); c.roundRect(8, y - 7, 18, 14, 5); c.fill(); c.stroke(); }
+    c.fillStyle = (Math.floor(t * 3) % 2) ? '#7dff9a' : '#3ccf7a'; c.beginPath(); c.arc(-30, -18, 4, 0, TAU); c.fill(); c.stroke();
+    c.beginPath(); c.moveTo(20, -30); c.lineTo(28, -48); c.stroke(); c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(28, -50, 3.4, 0, TAU); c.fill(); c.stroke();
+  } else {
+    c.fillStyle = '#ffb347'; c.beginPath(); c.moveTo(-30, -6); c.lineTo(-42 - Math.sin(t * 26) * 4, 0); c.lineTo(-30, 6); c.closePath(); c.fill();
+    c.fillStyle = '#7d879e'; c.beginPath(); c.roundRect(-34, -8, 10, 16, 3); c.fill(); c.stroke();
+    c.fillStyle = hit ? '#ffffff' : '#ffb86a'; c.beginPath(); c.roundRect(-28, -17, 50, 34, 15); c.fill(); c.stroke();
+    c.fillStyle = '#fff'; c.fillRect(-8, -17, 9, 34); c.fillStyle = 'rgba(255,255,255,.45)'; c.fillRect(-22, -13, 38, 3.5); c.fillStyle = 'rgba(60,20,0,.2)'; c.fillRect(-24, 9, 44, 6);
+    c.beginPath(); c.roundRect(-28, -17, 50, 34, 15); c.stroke();
+    c.fillStyle = '#e6e9f0'; c.beginPath(); c.moveTo(20, -12); c.quadraticCurveTo(38, -8, 38, 0); c.quadraticCurveTo(38, 8, 20, 12); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = '#16141c'; c.beginPath(); c.roundRect(23, -6, 9, 9, 3); c.fill(); c.fillStyle = 'rgba(159,240,255,.8)'; c.fillRect(24.5, -4.5, 3, 3);
+    rivet(c, -18, 0); rivet(c, 10, 0);
+  }
+  // hull bar above it
+  const f = clamp(w.hp / w.max, 0, 1), bw = w.kind === 'station' ? 60 : 46, by = -(w.kind === 'station' ? 82 : 30);
+  c.fillStyle = INK; c.beginPath(); c.roundRect(-bw / 2 - 2, by - 2, bw + 4, 9, 4); c.fill();
+  c.fillStyle = f > 0.5 ? '#3ccf7a' : f > 0.25 ? '#ffb02e' : '#ff5a4a'; c.beginPath(); c.roundRect(-bw / 2, by, bw * f, 5, 2.5); c.fill();
+  c.restore();
+}
+
 // a wingman: a rescued maintenance robot flying with the ship (o.f flash on hit)
 export function drawWingman(c, x, y, t = 0, ph = 0) {
   c.save(); c.translate(x, y + Math.sin(t * 3 + ph) * 1.5);
