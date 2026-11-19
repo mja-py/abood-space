@@ -178,6 +178,23 @@ Played on a Red Magic 8S the menu scrolled and some buttons showed symbol charac
 - Checked at 568×320, 667×375, 740×340, 902×350, 902×406 and 1180×820 in English and Arabic: no scrollable area, no
   panel off screen.
 
+## Harder from Mars on (v3.8)
+
+The owner found the fourth journey easy and the Hard tier no different from normal, and wants only the Moon to be the
+children's journey.
+
+- **Mars can hurt.** No self-repair and no respawn any more; it keeps slightly kinder hitboxes, 5% slower traffic and
+  one free shield per leg. It asks for ship level 4, and its own robots (aimed shots) fly in.
+- **The robot curve starts one journey earlier and is steeper:** Mars shot, Venus + dash, Belt + bomb, Jupiter + laser
+  sweep, Saturn + shield link, Uranus + swarm, Neptune everything, faster. Attack tokens 1,2,3,3,4,5,6.
+- **Upgrades are answered harder** (`threat`): more robots per wave (`+round((T-1)x4)`), extra attackers from T 1.25,
+  pauses divided by T, faster shots, more elites. Measured on the Belt: 8 levels over is no longer easier than on-level.
+- **The Hard tier is a different flight** (`HARD` in `js/meta.js`): +2 robots per wave, +2 attackers, one attack kind
+  ahead of the journey, an elite in every wave, every robot wave slot used, faster shots, warnings x0.8, bosses rest
+  x0.72, a 75% second form, threat never below 1.4. It pays x2.5. The test pilot does not survive a Hard Belt leg.
+- Time to finish (estimate from payouts and the test pilot): about 8 to 10 hours to Neptune, of which about 2 hours
+  is first-time flying and the rest is replays to save for the ship-level gates.
+
 ## Screens and layout (v3.2)
 
 - **One play-field shape everywhere.** The field is always about 2.15:1, the shape of a phone held sideways. iPads,

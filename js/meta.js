@@ -163,7 +163,7 @@ export const JOURNEYS = [
   { id: 'moon', planet: 'moon', from: 'earth', need: 0,
     theme: { sky: ['#04061a', '#0c1236', '#1a2452'], nebula: ['#3b4fb8', '#6a3fa0', '#1f7a9a'], dust: '#9fb4ff', rock: ['#8a8178', '#5a524c', '#cbc1b4'], ice: ICE, star: '#ffffff' },
     legs: legsOf(0) },
-  { id: 'mars', planet: 'mars', from: 'moon', need: 0,
+  { id: 'mars', planet: 'mars', from: 'moon', need: 4,
     theme: { sky: ['#0a0510', '#260d1c', '#4a1a1c'], nebula: ['#c2442c', '#7a2a5a', '#e0803a'], dust: '#ffb08a', rock: ['#9a5a3c', '#62351f', '#d8946a'], ice: ICE, star: '#fff4ec' },
     legs: legsOf(1) },
   { id: 'venus', planet: 'venus', from: 'mars', need: 12,
@@ -199,9 +199,9 @@ export const leg = (jid, li) => { const j = journey(jid); return (j && j.legs[li
 //   warnPlus      added to every warning (meteors, lasers)                    bossAtk       boss attack intervals, × this
 export const ASSIST = {
   moon: { noDamage: true, bigHitbox: 1.6, hurtScale: 0.6, autoAim: true, bossHarmless: true, speedScale: 0.85, warnPlus: 0.8, bossAtk: 1.6, label: 'toddler' },
-  mars: { regenShield: 6, respawn: true, bigHitbox: 1.3, hurtScale: 0.8, speedScale: 0.95, warnPlus: 0.4, bossAtk: 1.25, label: 'kid' },
-  venus: { bigHitbox: 1.15, warnPlus: 0.15, bossAtk: 1.3 },   // v3.6: the first journey that can hurt: its bosses rest longer between moves
-  belt: { bigHitbox: 1.05 },
+  mars: { bigHitbox: 1.15, hurtScale: 0.85, speedScale: 0.95, warnPlus: 0.25, bossAtk: 1.3, startShield: true },   // one free shield per leg: the only cushion left   // v3.8: only the Moon is for the little ones. Mars can hurt: no self-repair, no respawn
+  venus: { bigHitbox: 1.05, warnPlus: 0.1, bossAtk: 1.15 },
+  belt: {},
   jupiter: {},
   saturn: { warnPlus: -0.05 },
   uranus: { warnPlus: -0.1 },
@@ -492,7 +492,10 @@ const FLAV = {
 // v3.6: warnings act sooner. Every warning length (meteors, robot tells, boss tells, zones, rings, lasers) is × this, by journey.
 export const WARN_K = [0.85, 0.8, 0.7, 0.68, 0.65, 0.62, 0.6, 0.58];
 export const LEG_BASE = 130;         // seconds before the boss (+5 per leg index)
-export const HARD = { hp: 1.35, speed: 1.15, warn: -0.2, pay: 2 };
+// v3.8 the Hard tier is a different flight, not the same one with bigger numbers: more robots per wave, more of them attacking,
+// one attack kind ahead of the journey, an elite in every wave, faster shots, shorter warnings, bosses that rest less, and a
+// stronger second form. It pays ×2.5.
+export const HARD = { hp: 1.6, speed: 1.2, warn: -0.2, warnK: 0.8, pay: 2.5, robots: 2, tokens: 2, every: 0.8, shot: 1.15, rest: 0.72, form2: 0.75, threat: 1.4 };
 const EVENTS = ['cascade', 'flare', 'corridor', 'grabber', 'scrapRain'];
 function piece(name, t, j, li, D) {
   if (EVENTS.includes(name)) return [{ t, kind: 'event', ev: name, dur: name === 'scrapRain' ? 9 : name === 'corridor' ? 14 : name === 'flare' ? 8 : 6 }];
@@ -515,24 +518,27 @@ const CV = (attacks, tokens, hp, shotV, tele, waves, n, rage, every, life) => ({
 // 2.6 → 1.35 s); inside a journey leg 1 is a breather, leg 2 the step and leg 3 the spike (LEG_SHAPE). Telegraphs are
 // shortened by WARN_K now, so `tele` stays 1 here.
 export const CURVE = [
-  CV(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),              // moon: no robots (toddlers)
-  CV(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),              // mars
-  CV(1, 2, 14, 190, 1, 2, 2, 11, 2.6, 15),       // venus: aimed shot
-  CV(2, 2, 18, 208, 1, 3, 3, 10, 2.3, 15),       // belt: + charge dash
-  CV(3, 3, 23, 226, 1, 3, 3, 9, 2.0, 16),        // jupiter: + area bomb
-  CV(4, 3, 28, 246, 1, 4, 4, 8, 1.75, 16),       // saturn: + laser sweep
-  CV(5, 4, 34, 268, 1, 4, 4, 7.2, 1.55, 17),     // uranus: + shield link
-  CV(6, 5, 41, 292, 1, 5, 5, 6.5, 1.35, 17),     // neptune: + swarm
+  CV(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),              // moon: no robots (the children's journey)
+  CV(1, 1, 8, 170, 1, 2, 1, 13, 3.0, 14),        // mars: aimed shot (v3.8: robots start here, one journey earlier than before)
+  CV(2, 2, 14, 195, 1, 3, 2, 11, 2.5, 15),       // venus: + charge dash
+  CV(3, 3, 20, 215, 1, 3, 3, 9.5, 2.1, 15),      // belt: + area bomb
+  CV(4, 3, 25, 235, 1, 4, 3, 8.5, 1.85, 16),     // jupiter: + laser sweep
+  CV(5, 4, 30, 255, 1, 4, 4, 7.5, 1.65, 16),     // saturn: + shield link
+  CV(6, 5, 36, 275, 1, 5, 4, 6.8, 1.45, 17),     // uranus: + swarm
+  CV(6, 6, 43, 300, 1, 5, 5, 6, 1.3, 17),        // neptune: everything, faster and more of it
 ];
-const LEG_SHAPE = [0.85, 1, 1.2];
-export const curve = (j, li = 1) => {
-  const C = CURVE[clamp(j | 0, 0, CURVE.length - 1)], k = LEG_SHAPE[clamp(li | 0, 0, 2)];
-  if (!C.robots || k === 1) return C;
-  return Object.assign({}, C, { every: +(C.every / k).toFixed(2), n: Math.max(1, Math.round(C.n * k)), tokens: Math.max(1, C.tokens + (li === 0 ? -1 : 1)), rage: +(C.rage / k).toFixed(1) });
+const LEG_SHAPE = [0.9, 1.05, 1.25];
+export const curve = (j, li = 1, hard = false) => {
+  j = clamp(j | 0, 0, CURVE.length - 1); if (hard && j < 1) j = 1;   // the Hard tier of the Moon flies Mars's robots
+  const C = CURVE[j], k = LEG_SHAPE[clamp(li | 0, 0, 2)];
+  if (!C.robots) return C;
+  const o = Object.assign({}, C, { every: +(C.every / k).toFixed(2), n: Math.max(1, Math.round(C.n * k)), tokens: Math.max(1, C.tokens + (li === 0 ? -1 : li === 2 ? 1 : 0)), rage: +(C.rage / k).toFixed(1) });
+  if (hard) { o.n += HARD.robots; o.tokens += HARD.tokens; o.every = +(o.every * HARD.every).toFixed(2); o.shotV = Math.round(o.shotV * HARD.shot); o.rage = +(o.rage * 0.7).toFixed(1); o.attacks = Math.min(ROBOT_ATTACKS.length, o.attacks + 1); }
+  return o;
 };
 // v3.6 threat: the robots answer the ship's upgrades. Levels above what the journey asks for raise the pressure (more robots,
 // more of them attacking, shorter pauses, tougher rocks, less rest between boss moves), so upgrades help but never empty the screen.
-export const threat = (j, lv) => { const need = (JOURNEYS[j] || {}).need || 0; return j >= 2 ? clamp(1 + 0.06 * (lv - need), 1, 2) : j === 1 ? clamp(1 + 0.02 * lv, 1, 1.25) : 1; };
+export const threat = (j, lv) => { const need = (JOURNEYS[j] || {}).need || 0; return j >= 1 ? clamp(1 + 0.06 * (lv - need), 1, j === 1 ? 1.5 : 2) : 1; };
 // leg modifiers (Jupiter on): one twist per leg, two on the Hard tier
 export const MODS = ['ion', 'dark', 'magnet', 'wind'];
 // replays draw their waves and set pieces from the journey's pool with a seed, so the same leg flies differently
@@ -583,15 +589,15 @@ export function legPlan(jid, li, hard = false, seed = null) {
   beats.push({ t: r(0.85), kind: 'filler', dur: r(0.1), rate: j >= 2 ? 0.8 : 0.5 });
   beats.push(...piece(F.twist[li], r(0.85) + 1, j, li, D));
   // v3.1 rage robots (Venus on): a teach beat on the first leg, then waves that grow with the leg and the journey
-  const C = curve(j, li);
+  const C = curve(j, li, hard);
   if (C.robots) {
     const newest = ROBOT_ATTACKS[C.attacks - 1];
-    if (li === 0) { beats.push({ t: r(0.05), kind: 'wave', form: 'robots', n: 1, teach: newest }); beats.push({ t: r(0.05), kind: 'say', key: 'bot_teach_' + newest }); }
-    const slots = [0.18, 0.4, 0.6, 0.75].slice(0, Math.min(4, C.waves + li - 1));
+    if (li === 0 && !hard && C.attacks > (CURVE[j - 1] || {}).attacks) { beats.push({ t: r(0.05), kind: 'wave', form: 'robots', n: 1, teach: newest }); beats.push({ t: r(0.05), kind: 'say', key: 'bot_teach_' + newest }); }
+    const slots = [0.18, 0.4, 0.6, 0.75].slice(0, hard ? 4 : Math.min(4, C.waves + li - 1));
     // the rush: one last hard push together with the twist set piece, then the calm before the boss
-    beats.push({ t: r(0.86), kind: 'wave', form: 'robots', n: C.n + 1 + (hard ? 1 : 0), elite: li === 0 ? 0 : 1, rush: true });
+    beats.push({ t: r(0.86), kind: 'wave', form: 'robots', n: C.n + 1, elite: (li === 0 ? 0 : 1) + (hard ? 1 : 0), rush: true });
     if (j >= 5) beats.push({ t: r(0.57), kind: 'wave', form: 'robots', n: Math.max(2, C.n - 1), elite: 0 });   // from Saturn on robots fly in during the middle set piece too
-    slots.forEach((f, i) => beats.push({ t: r(f), kind: 'wave', form: 'robots', n: C.n + (hard ? 1 : 0), elite: li === 0 ? 0 : li === 1 ? (i % 2) : 1 + (j >= 6 && i === slots.length - 1 ? 1 : 0) }));
+    slots.forEach((f, i) => beats.push({ t: r(f), kind: 'wave', form: 'robots', n: C.n, elite: (li === 0 ? 0 : li === 1 ? (i % 2) : 1 + (j >= 6 && i === slots.length - 1 ? 1 : 0)) + (hard ? 1 : 0) }));
   }
   // v3.3 supply drones: three per leg carry a weapon capsule (the only source of weapons now)
   for (const f of [0.22, 0.5, 0.8]) beats.push({ t: r(f), kind: 'carrier' });
@@ -604,7 +610,7 @@ export function legPlan(jid, li, hard = false, seed = null) {
     const guard = li === 2 ? guardOf(jid) : null;
     if (guard) { // battle 1: the guard. Battle 2: the giant, after a short breath with a repair
       beats.push({ t: D - 6.2, kind: 'warn', boss: guard });
-      beats.push({ t: D - 3.8, kind: 'boss', id: guard, kind2: 'guardian', scale: (hard ? HARD.hp : 1) * 0.65, final: false, guard: true });
+      beats.push({ t: D - 3.8, kind: 'boss', id: guard, kind2: 'guardian', scale: hard ? HARD.hp : 0.65, final: false, guard: true });
       beats.push({ t: D - 3.5, kind: 'relief', pick: 'repair', n: 1 });
       beats.push({ t: D - 3.2, kind: 'warn', boss: B.id, giant: true });
     } else beats.push({ t: D - 2.4, kind: 'warn', boss: B.id });
@@ -613,7 +619,7 @@ export function legPlan(jid, li, hard = false, seed = null) {
   beats.sort((a, b) => a.t - b.t);
   const star = Math.round(L.star * (D / L.dur) * 1.15 / 50) * 50;
   const plan = { jid, li, hard: !!hard, dur: D, star, speedScale, warnPlus, assist, hpMul: (L.hp > 0 ? L.hp : 1) * (hard ? HARD.hp : 1),
-    beats, rescueTotal: 3, boss: B, bossAtk: assist.bossAtk || 1, curve: curve(j, li), mods: [] };
+    beats, rescueTotal: 3, boss: B, bossAtk: assist.bossAtk || 1, curve: curve(j, li, hard), mods: [] };
   if (j >= 4) {
     const R = seed != null ? rng(seed ^ 0x9e37) : null, first = R ? MODS[Math.floor(R() * MODS.length)] : MODS[(j * 2 + li) % MODS.length];
     plan.mods.push(first);

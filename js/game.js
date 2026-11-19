@@ -542,13 +542,13 @@ function start(jid, li = 0) {
   const mods = (plan && plan.mods) || [], ion = mods.includes('ion');
   const L = Object.assign({}, L0, { dur: plan ? plan.dur : L0.dur, speed: L0.speed * sp * (ion ? 1.15 : 1), mv: (L0.mv > 0 ? L0.mv : 950) * sp, star: plan ? plan.star : L0.star });
   run = newRun({ mode: 'leg', jid, ji, li, J, L, last: li === J.legs.length - 1, spawnT: 1.6, nextMeteor: L.firstMeteor != null ? L.firstMeteor : 20,
-    plan, beats: plan ? plan.beats.slice() : [], AS, hard, easy, extraHull: easy ? 1 : 0, startShield: easy, rescueTotal: plan ? plan.rescueTotal : 0,
+    plan, beats: plan ? plan.beats.slice() : [], AS, hard, easy, extraHull: easy ? 1 : 0, startShield: easy || !!AS.startShield, rescueTotal: plan ? plan.rescueTotal : 0,
     mods, magDir: Math.random() < 0.5 ? -1 : 1, magT: 0, wind: 0, windT: 0, dirP: 1, dirK: 1, dirT: 0, intensity: 0 });
   beginRun();
   // leg fields (DESIGN §4.3) and costume perks (§5)
   run.mix = Object.assign({}, L.mix || {});
   if (run.mix.crystal) run.mix.crystal *= S.crystalWeight || 1;
-  run.threat = safe(M.threat, ji, safe(M.shipLevel) | 0) || 1;
+  run.threat = Math.max(safe(M.threat, ji, safe(M.shipLevel) | 0) || 1, hard ? (M.HARD || {}).threat || 1 : 1);
   run.hpMul = (plan ? plan.hpMul : L.hp > 0 ? L.hp : 1) * Math.pow(run.threat, 0.7);
   if (run.threat >= 1.3) later(7, () => say('bot_threat', true));
   run.coinMul = L.coin > 0 ? L.coin : 1;
@@ -850,7 +850,7 @@ function setPiece(b) {
   }
   if (b.kind === 'wave') {
     switch (b.form) {
-      case 'robots': { const T = run.threat || 1, n = (b.n | 0 || 1) + (b.teach ? 0 : Math.floor((T - 1) * 2.5)), el = (b.elite | 0) + (T >= 1.6 ? 1 : 0);
+      case 'robots': { const T = run.threat || 1, n = (b.n | 0 || 1) + (b.teach ? 0 : Math.round((T - 1) * 4)), el = (b.elite | 0) + (T >= 1.3 ? 1 : 0) + (T >= 1.7 ? 1 : 0);
         if (b.teach) { const o = makeRobot({ teach: b.teach, y: 200, sx: W * 0.8 }); if (o) { o.life = 16; say2('rb_' + b.teach, W * 0.55, 90, '#ffb3b3'); } break; }
         for (let i = 0; i < n; i++) later(i * 0.7, () => makeRobot({ elite: i < el }));
         if (!run.robotSaid) { run.robotSaid = true; say(run.li === 0 ? 'bot_family' : 'bot_robots', true); }
@@ -948,7 +948,8 @@ function drawWeather(c) {
 }
 const TELE = { shot: 0.6, dash: 0.9, bomb: 1.25, sweep: 1.0, shield: 0.6, swarm: 0.8 };
 // v3.6: every warning is shorter, more so on the later journeys (meta.js WARN_K); the kids' assists still add on top
-const WK = () => (M.WARN_K || [])[run ? run.ji | 0 : 0] || 1;
+const hardOn = () => !!(run && run.plan && run.plan.hard), HD = () => M.HARD || {};
+const WK = () => ((M.WARN_K || [])[run ? run.ji | 0 : 0] || 1) * (hardOn() ? HD().warnK || 1 : 1);
 const teleOf = k => Math.max(0.35, (TELE[k] || 0.8) * (CUR().tele || 1) * WK() + ((run.AS && run.AS.warnPlus) || 0) * 0.6);
 const tokensUsed = () => { let n = 0; for (const o of objs) if (!o.dead && o.act) n++; return n; };
 function robotY(o) { // a lane away from the other robots
@@ -1019,7 +1020,7 @@ function robotMove(o, dt) {
   if (o.act) { robotAct(o, dt); return; }
   if (o.st !== 'hold' || st !== 'play' || !ship.alive || debug.noAttack || run.ending) return;
   o.cd -= dt * spd / directorK();
-  if (o.cd <= 0) { if (tokensUsed() < (C.tokens || 2) + (o.raging ? 1 : 0) + ((run.threat || 1) >= 1.5 ? 1 : 0)) startAct(o); else o.cd = 0.25; }
+  if (o.cd <= 0) { if (tokensUsed() < (C.tokens || 2) + (o.raging ? 1 : 0) + ((run.threat || 1) >= 1.6 ? 2 : (run.threat || 1) >= 1.25 ? 1 : 0)) startAct(o); else o.cd = 0.25; }
 }
 function startAct(o) {
   let k = pickAtk(o.atk, o.main);
@@ -1043,7 +1044,7 @@ function robotAct(o, dt) {
   if (a.t < a.warn) return;
   switch (a.k) {
     case 'shot': { const n = o.raging ? 3 : 1, mx = o.x - 26, my = o.y, base = aimAng(mx, my);
-      for (let i = 0; i < n; i++) { shot('pellet', mx, my, base + (n > 1 ? (i / (n - 1) - 0.5) * 0.36 : 0), C.shotV || 200); const s = eshots[eshots.length - 1]; if (s) s.src = 'robot'; }
+      for (let i = 0; i < n; i++) { shot('pellet', mx, my, base + (n > 1 ? (i / (n - 1) - 0.5) * 0.36 : 0), (C.shotV || 200) * Math.pow(run.threat || 1, 0.4)); const s = eshots[eshots.length - 1]; if (s) s.src = 'robot'; }
       sfx.eshot(); break; }
     case 'dash': o.dashing = true; o.dv = 520 * (o.raging ? 1.25 : 1); o.dvY = o.raging ? ship.y : null; o.dmg = 1; sfx.whoosh(); shake(3); break;
     case 'shield': if (a.mate && !a.mate.dead) { a.mate.shieldBy = o; ring(a.mate.x, a.mate.y, 34, '#5ec8ff', 0.4); sfx.shieldHit(); } break;
@@ -1053,7 +1054,7 @@ function robotAct(o, dt) {
     // bomb and sweep run on their own timers once started
   }
   o.act = null; o.tell = 0;
-  o.cd = (C.every || 2.5) * rnd(0.85, 1.15) * (o.raging ? 0.6 : 1) * (o.teach ? 0.7 : 1) / Math.sqrt(run.threat || 1);
+  o.cd = (C.every || 2.5) * rnd(0.85, 1.15) * (o.raging ? 0.6 : 1) * (o.teach ? 0.7 : 1) / (run.threat || 1);
 }
 function addZone(x, y, r, warn, bx, by) { if (zones.length < 16) zones.push({ x, y, r, t: 0, warn: Math.max(0.5, warn), ph: 'warn', bx, by, dead: false }); }
 function zoneHits(x, y, r) {
@@ -1553,7 +1554,7 @@ const BX = {
   weapon: () => ship && ship.weapon ? ship.weapon.kind : null, xMax: () => xMax(), enraged: () => !!(run && run.enraged),
   dmgRival: (d, src) => damageRival(d, src),
   // v3.5: the giants send out workers of their family and throw shock rings
-  restK: () => Math.pow((run && run.threat) || 1, -0.35),
+  restK: () => Math.pow((run && run.threat) || 1, -0.35) * (hardOn() ? HD().rest || 1 : 1),
   bossAtk: () => (run && run.plan && run.plan.bossAtk) || 1,   // v3.6: a stronger ship gets less rest between boss moves
   kin: () => { let n = 0; for (const o of objs) if (!o.dead && o.minion) n++; return n; },
   brood: (x, y, elite) => {
@@ -1833,7 +1834,7 @@ function beginForm2() {
   for (const o of objs) if (!o.dead && o.minion) { o.dead = true; smoke(o.x, o.y, 2, '#6d6a80'); }
   const k = M.FORM2_S || 1.15, soft = !!(run.AS && (run.AS.noDamage || run.AS.bossHarmless));
   rv.grow = { t: 0, s0: rv.s || 1, s1: (rv.s || 1) * k, r0: rv.r, r1: rv.r * k };
-  rv.max = Math.round(rv.max * (soft ? 0.4 : 0.5)); rv.hp = rv.max; rv.drops = 5; RIVH.id = null;
+  rv.max = Math.round(rv.max * (soft ? 0.4 : hardOn() ? HD().form2 || 0.5 : 0.5)); rv.hp = rv.max; rv.drops = 5; RIVH.id = null;
   if (rv.B) BS.form2(rv.B, rv);
   safe(UI.banner, tt('f_form2', 'SECOND FORM'), tt('bc_q_' + rv.id, rvName(rv.id)), 2200);
   rvSay(tt('bq_form2', 'I am not finished!'));
@@ -1923,6 +1924,7 @@ const muzzle = () => rv.x + rv.mu[0], muzzleY = () => rv.y + rv.mu[1];
 function shot(kind, x, y, ang, v, extra) {
   if (eshots.length >= 120) return null;
   if (run && run.mods && run.mods.includes('ion')) v *= 0.7;
+  if (hardOn()) v *= HD().shot || 1;
   const s = { kind, x, y, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v, r: ER(kind), ang, dmg: 1, life: 8, dead: false, hp: 0 };
   if (kind === 'orb') { s.hp = (S.dmg || 1) * (S.duelBolt || 1); if (!run.orbSaid) { run.orbSaid = true; say('bot_orb', true); } }
   if (extra) Object.assign(s, extra);
