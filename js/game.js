@@ -539,7 +539,7 @@ function start(jid, li = 0, spec = null) {
   const plan = (spec ? safe(M.mission, spec) : safe(M.legPlan, jid, li, hard, seed)) || null;
   if (spec && !plan) { console.warn('bad mission', spec); return false; }
   const AS = (plan && plan.assist) || {};
-  const rk = spec ? 'm:' + (spec.id || spec.type) : jid + ':' + li, easy = (retries[rk] || 0) >= 2;   // hidden assist: slower, +1 hull and a shield after two deaths
+  const rk = spec ? 'm:' + (spec.id || spec.type) : jid + ':' + li, easy = !(spec && spec.exp) && (retries[rk] || 0) >= 2;   // hidden assist: slower, +1 hull and a shield after two deaths
   const sp = (plan ? plan.speedScale : 1) * (easy ? 0.85 : 1);
   const mods = (plan && plan.mods) || [], ion = mods.includes('ion');
   const L = Object.assign({}, L0, { dur: plan ? plan.dur : L0.dur, speed: L0.speed * sp * (ion ? 1.15 : 1), mv: (L0.mv > 0 ? L0.mv : 950) * sp, star: plan ? plan.star : L0.star });
@@ -558,6 +558,7 @@ function start(jid, li = 0, spec = null) {
   run.pickMul = L.pick > 0 ? L.pick : 1;
   run.mv = L.mv;
   run.warn = (L.warn || 1.1) * WK() * (S.warnMult || 1) + (S.warnPlus || 0) + (S.bot.warnPlus || 0) + (plan ? plan.warnPlus : 0);
+  if (spec && spec.exp) applyBoons(spec);
   safe(UI.hideMenus); safe(UI.showPause, false); safe(UI.showHud, true, jid, li);
   if (hard) safe(UI.note, tt('f_hard'));
   if (mods.length) later(1.8, () => { safe(UI.banner, tt('mod_title', 'Space weather'), mods.map(m => tt('mod_' + m, m)).join(' · '), 3400); sfx.warn(); });
@@ -579,6 +580,10 @@ function abandon() {
       if (run.ds === 'fixed') M.finishDuel(run.rid, r);   // the rival was already fixed
       else if (typeof M.abandonDuel === 'function') M.abandonDuel(run.rid, r);
       else M.failDuel(run.rid, r);
+    } else if (run.mission) {
+      // a mission that had already arrived is won; an expedition sector left midway is a lost sector (it costs the tow)
+      if (from === 'arrive' || (run.spec && run.spec.exp)) M.finishMission(run.spec || run.mission, r, from === 'arrive');
+      else M.abandonLeg(run.jid, run.li, r);
     } else {
       if (from === 'arrive') M.finishLeg(run.jid, run.li, r); // the leg was already done
       else if (typeof M.abandonLeg === 'function') M.abandonLeg(run.jid, run.li, r);
@@ -1048,7 +1053,7 @@ function robotAct(o, dt) {
   const a = o.act, C = CUR(); a.t += dt; o.tell = clamp(a.t / a.warn, 0, 1);
   if (a.t < a.warn) return;
   switch (a.k) {
-    case 'shot': { const n = o.raging ? 3 : 1, mx = o.x - 26, my = o.y, wd = run.ward && run.ward.hp > 0 && Math.random() < (run.ward.kind === 'station' ? 0.3 : 0.4) ? run.ward : null, base = wd ? Math.atan2(wd.y - my, wd.x - mx) : aimAng(mx, my);
+    case 'shot': { const n = o.raging ? 3 : 1, mx = o.x - 26, my = o.y, wd = run.ward && run.ward.hp > 0 && Math.random() < (run.ward.kind === 'station' ? 0.3 : 0.4) / Math.pow(run.threat || 1, 2) ? run.ward : null, base = wd ? Math.atan2(wd.y - my, wd.x - mx) : aimAng(mx, my);
       for (let i = 0; i < n; i++) { shot('pellet', mx, my, base + (n > 1 ? (i / (n - 1) - 0.5) * 0.36 : 0), (C.shotV || 200) * Math.pow(run.threat || 1, 0.4)); const s = eshots[eshots.length - 1]; if (s) s.src = 'robot'; }
       sfx.eshot(); break; }
     case 'dash': o.dashing = true; o.dv = 520 * (o.raging ? 1.25 : 1); o.dvY = o.raging ? ship.y : null; o.dmg = 1; sfx.whoosh(); shake(3); break;
@@ -1386,8 +1391,8 @@ function hitStopMs(ms) { if (hitStopCd > 0) return; hitStop = Math.max(hitStop, 
 const duelSafe = () => run && rv && (run.ds === 'intro' || run.ds === 'fixed');
 
 // a shield pop with the shield ✦ (shieldBlast) also clears small rocks (and, in a duel, enemy shots, mines, drones) nearby
-function shieldBlast() {
-  const R = S.shieldBlast || 0; if (R <= 0) return;
+function shieldBlast(R0) {
+  const R = R0 || S.shieldBlast || 0; if (R <= 0) return;
   ring(ship.x, ship.y, R, '#9ff0ff', 0.35);
   for (const o of objs) if (!o.dead && o.type === 'rock' && o.size === 'S' && o.kind !== 'crystal' && Math.hypot(o.x - ship.x, o.y - ship.y) < R + o.r) kill(o, 'pop');
   for (const s of eshots) if (!s.dead && Math.hypot(s.x - ship.x, s.y - ship.y) < R + s.r) { s.dead = true; sparks(s.x, s.y, 3, '#9ff0ff', 90); }
@@ -1425,6 +1430,7 @@ function hurtShip(dmg, src = 'hit') {
   sparks(ship.x + 10, ship.y, 16, '#ffcf6a', 200); smoke(ship.x, ship.y, 3, '#5a566e');
   mood('sad', 1.8);
   if (ship.hp <= 0) { ship.hp = 0; die(); return true; }
+  if (run.thorns) shieldBlast(180);
   ship.inv = 1.4;
   if (ship.hp === 1 && !run.lowSaid) { run.lowSaid = true; say('bot_lowhp', true); say2('f_lowhp', ship.x + 30, ship.y + 40, '#ffb3b3'); } else say('bot_hit', true);
   return true;
@@ -1531,8 +1537,9 @@ function makeWard(w) {
   const st2 = w.kind === 'station';
   run.ward = { kind: w.kind, x: st2 ? 62 : 150, y: 205, r: st2 ? 46 : 30, hp: w.hp, max: w.hp, flash: 0, t: 0, inv: 0, said: false };
 }
-function hurtWard(d, x, y) {
+function hurtWard(d, x, y, src = 'hit') {
   const w = run.ward; if (!w || w.hp <= 0 || w.inv > 0 || st !== 'play') return false;
+  (run.wardLog = run.wardLog || {})[src] = (run.wardLog[src] || 0) + 1;   // for test pilots: what hit it
   if (run.AS && run.AS.noDamage) { w.flash = 0.6; w.inv = 0.4; return true; }   // the Moon: it only rattles
   w.hp -= d; w.flash = 1; w.inv = 1.0; sparks(x != null ? x : w.x, y != null ? y : w.y, 10, '#ffcf6a', 170); sfx.tank(); shake(3);
   if (w.hp <= 0) { explode(w.x, w.y, w.r * 1.2, { shard: 'metal', fire: true, ringCol: '#ffb347' }); play('boomL', 0.9, 0.8); failMission(); }
@@ -1543,12 +1550,12 @@ function updateWard(dt) {
   const w = run.ward; w.t += dt; w.flash = Math.max(0, w.flash - dt * 4); w.inv -= dt;
   if (w.kind === 'tanker') { w.y = 205 + Math.sin(w.t * 0.45) * 88; w.x = 150 + Math.sin(w.t * 0.3) * 18; }
   if (w.hp <= 0 || st !== 'play') return;
-  for (const s of eshots) { if (s.dead) continue; const dx = s.x - w.x, dy = s.y - w.y, rr = w.r + s.r; if (dx * dx + dy * dy < rr * rr) { s.dead = true; hurtWard(1, s.x, s.y); } }
+  for (const s of eshots) { if (s.dead) continue; const dx = s.x - w.x, dy = s.y - w.y, rr = w.r + s.r; if (dx * dx + dy * dy < rr * rr) { s.dead = true; hurtWard(1, s.x, s.y, 'shot'); } }
   for (const o of objs) {
     if (o.dead || o.ghost || o.harmless || o.type === 'wall' || o.wardHit) continue;
     if (o.type === 'rock' && o.size === 'S') { const dx0 = o.x - w.x, dy0 = o.y - w.y, r0 = w.r + o.r; if (dx0 * dx0 + dy0 * dy0 < r0 * r0) { o.dead = true; smoke(o.x, o.y, 1, '#8a86a0', o.vx); } continue; }   // pebbles only bounce off its plating
     const dx = o.x - w.x, dy = o.y - w.y, rr = w.r + o.r * 0.75;
-    if (dx * dx + dy * dy < rr * rr) { o.wardHit = true; hurtWard(1, o.x, o.y); if (o.kind !== 'robot') { o.dead = true; smoke(o.x, o.y, 2, '#8a86a0', o.vx); } }
+    if (dx * dx + dy * dy < rr * rr) { o.wardHit = true; hurtWard(1, o.x, o.y, o.kind || (o.type + (o.size || ''))); if (o.kind !== 'robot') { o.dead = true; smoke(o.x, o.y, 2, '#8a86a0', o.vx); } }
   }
 }
 function applyMutators() {
@@ -1556,6 +1563,33 @@ function applyMutators() {
   if (run.mut.noShield) { S = Object.assign({}, S, { shieldCd: 0 }); ship.shieldUp = false; ship.extraShield = 0; run.AS = Object.assign({}, run.AS, { regenShield: 0 }); }
   if (run.mut.glass) { ship.maxHp = Math.max(2, Math.ceil(ship.maxHp / 2)); ship.hp = ship.maxHp; }   // half the hull
   if (run.mut.quickPower) ship.pwK = 0.4;
+}
+// v4.2 expeditions: the boons picked along the route (meta.js BOONS) and the hull carried from the sector before
+function applyBoons(spec) {
+  const B = run.boons = {}; for (const k of spec.boons || []) B[k] = true;
+  S = Object.assign({}, S); S.bot = Object.assign({}, S.bot);
+  if (B.hull) ship.maxHp += 1;
+  if (B.dmg) S.dmg *= 1.2;
+  if (B.rate) S.fireRate *= 1.15;
+  if (B.pierce) S.pierce = (S.pierce | 0) + 1;
+  if (B.engine) { S.maxVy *= 1.25; S.follow *= 1.25; }
+  if (B.magnet) S.magnet = (S.magnet || 0) + 70;
+  if (B.super) S.superGain *= 1.3;
+  if (B.charge) { superF = Math.max(superF, 0.5); checkSuperFull(); }
+  if (B.power) ship.pwK = (ship.pwK || 1) * 0.7;
+  if (B.shield && !(run.mut && run.mut.noShield)) { S.shieldCd = S.shieldCd > 0 ? S.shieldCd * 0.7 : 24; ship.shieldUp = true; }
+  if (B.regen) S.regen = S.regen > 0 ? S.regen * 0.7 : 40;
+  if (B.nabeeh) { if (S.bot.rate > 0) S.bot.rate *= 1.5; else { S.bot.lv = Math.max(1, S.bot.lv | 0); S.bot.rate = 0.7; S.bot.dmg = S.bot.dmg || 1; } }
+  if (B.armor) ship.extraShield += 1;
+  if (B.calm) run.shotK = 0.85;
+  if (B.radar) run.warn += 0.3;
+  if (B.lucky) run.pickMul *= 2;
+  if (B.coins) run.coinMul *= 1.5;
+  if (B.close) { run.pbK = 1.6; run.pbD = 320; }
+  if (B.thorns) run.thorns = true;
+  if (B.wing) addWing();
+  if (B.weapon) giveWeapon(WEAPONS[(spec.seed >>> 0) % WEAPONS.length]);
+  ship.hp = clamp(ship.maxHp - (spec.lost | 0), 1, ship.maxHp);
 }
 function doSuper() {
   if (st !== 'play' || !ship || !ship.alive || beamT > 0 || superF < 1 || duelSafe()) return false;
@@ -2006,6 +2040,7 @@ function shot(kind, x, y, ang, v, extra) {
   if (run && run.mods && run.mods.includes('ion')) v *= 0.7;
   if (hardOn()) v *= HD().shot || 1;
   if (run && run.mut && run.mut.fastShots) v *= 1.3;
+  if (run && run.shotK) v *= run.shotK;
   const s = { kind, x, y, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v, r: ER(kind), ang, dmg: 1, life: 8, dead: false, hp: 0 };
   if (kind === 'orb') { s.hp = (S.dmg || 1) * (S.duelBolt || 1); if (!run.orbSaid) { run.orbSaid = true; say('bot_orb', true); } }
   if (extra) Object.assign(s, extra);
@@ -2495,7 +2530,7 @@ function updateObjs(dt) {
   for (let i = 0; i < bolts.length; i++) {
     const b = bolts[i];
     // v3.6 point-blank: a bolt is 30% stronger over its first 230 px, so flying close is worth the risk
-    if (b.pb === undefined) { b.pb = !b.home; b.x0 = b.x; if (b.pb) b.dmg *= PB_K; } else if (b.pb && b.x - b.x0 > PB_D) { b.pb = false; b.dmg /= PB_K; }
+    if (b.pb === undefined) { b.pb = !b.home; b.x0 = b.x; if (b.pb) b.dmg *= run.pbK || PB_K; } else if (b.pb && b.x - b.x0 > (run.pbD || PB_D)) { b.pb = false; b.dmg /= run.pbK || PB_K; }
     b.x += b.vx * dt; b.y += b.vy * dt;
     if (b.as !== null && rv) { b.as += clamp(((rv.aimY != null ? rv.aimY : rv.y) - b.y) * 2 - b.as, -40, 40) * dt * 8; b.y += b.as * dt; b.ang = Math.atan2(b.vy + b.as, b.vx); } // duel aim assist
     else if (b.tgt && !b.tgt.dead && b.tgt.x > b.x) { b.ta += clamp((b.tgt.y - b.y) * 3 - b.ta, -60, 60) * dt * 8; b.y += b.ta * dt; b.ang = Math.atan2(b.vy + b.ta, b.vx); } // v3 Moon auto-aim
@@ -3054,6 +3089,7 @@ const hooks = {
   onRetry() {
     const r = run ? (run.mode === 'duel' ? { mode: 'duel', rid: run.rid } : { jid: run.jid, li: run.li, spec: run.spec || null }) : lastRun;
     if (!r) return goMenu();
+    if (r.spec && r.spec.exp) { goMenu(); safe(UI.openSheet, 'exp'); return; }
     if (r.mode === 'duel') { if (!startDuel(r.rid)) goMenu(); }
     else if (r.spec) { if (!start(r.spec.jid, 1, r.spec)) goMenu(); }
     else if (!start(r.jid, r.li)) goMenu();
@@ -3187,7 +3223,7 @@ window.__game = {
     },
     // v3.5: the live world for test pilots (raw arrays: read, do not keep)
     threat: () => run && run.threat,
-    mission(spec) { return start(spec.jid, 1, spec); }, goal: () => run && run.mission ? { text: goalText(), met: goalMet(), ward: run.ward && { hp: run.ward.hp, max: run.ward.max } } : null,
+    mission(spec) { return start(spec.jid, 1, spec); }, goal: () => run && run.mission ? { text: goalText(), met: goalMet(), ward: run.ward && { hp: run.ward.hp, max: run.ward.max, log: run.wardLog || {} } } : null,
     power(k) { return usePower(k || (S && S.power) || 'dash'); },
     world: () => ({ objs, eshots, emobs, meteors, zones, sweeps, rings, elasers, picks, rv, ship, W, H, Y_MIN, Y_MAX, ward: run && run.ward }),
     stats: () => S, report: () => run && report(),

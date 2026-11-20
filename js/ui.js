@@ -541,7 +541,7 @@ function pageSheet(body, kind, keep) {
   if (!(maxH > 80)) return;
   const units = [];
   for (const ch of [...body.children]) {
-    if (ch.matches('.cards,.facts')) for (const it of [...ch.children]) units.push({ n: it, g: ch.className });
+    if (ch.matches('.cards,.facts') && !ch.classList.contains('keep')) for (const it of [...ch.children]) units.push({ n: it, g: ch.className });   // `keep`: a choice of cards that must stay on one page
     else if (ch.matches('.mission')) units.push({ n: ch, g: 'mrow' });
     else units.push({ n: ch, g: null, head: ch.matches('.sec-title,.ladder-head,.hint') });
   }
@@ -609,6 +609,12 @@ function tileArt(kind, cnv) {
   else if (kind === 'costumes') { if (!astro(c, 48, 168, 2.1, { t: 0.4, pose: 'stand' })) astroFallback(c, 48, 70); }
   else if (kind === 'duels') { const L = MM('rivalList') || [], r = L.find(x => x.open && !x.beaten) || L.filter(x => x.open).pop() || { id: 'khurda' }; rivalPic(c, r.id, 50, 50, 92, { t: 0.3 }); }
   else if (kind === 'help') { if (!art('drawNabeeh', c, 48, 52, 2.3, { t: 0.3, mood: 'happy' })) { c.fillStyle = '#e9eef6'; c.beginPath(); c.arc(48, 48, 24, 0, TAU); c.fill(); } }
+  else if (kind === 'exp') { // a route: three stops and the ship setting out
+    c.strokeStyle = '#9fb4ff'; c.lineWidth = 4; c.setLineDash([2, 9]); c.beginPath(); c.moveTo(20, 74); c.quadraticCurveTo(40, 40, 52, 52); c.quadraticCurveTo(66, 64, 76, 24); c.stroke(); c.setLineDash([]);
+    c.strokeStyle = INK; c.lineWidth = 3;
+    for (const [x, y, r, col] of [[52, 52, 8, '#5ef2ff'], [76, 24, 11, '#ffd23f']]) { c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); c.stroke(); }
+    c.save(); c.translate(24, 70); c.rotate(-0.7); c.scale(0.62, 0.62); art('drawShip', c, 0, 0, Object.assign({}, shipLook(), { t: 0.4, tilt: 0, thrust: 1, hurt: 0, shield: 0, beam: false })); c.restore();
+  }
   else if (kind === 'badges') { const m = mk(96, 96); medal(m.getContext('2d'), 'tour', 2, 96); c.drawImage(m, 10, 10, 76, 76); }
   else { // missions: a clipboard with ticked lines and a dirham
     c.fillStyle = '#b98a55'; c.strokeStyle = INK; c.lineWidth = 3.5; rr(c, 24, 18, 48, 64, 7); c.fill(); c.stroke();
@@ -627,6 +633,9 @@ function tileArts() {
     if (!cnv) { cnv = mk(96, 96); cnv.className = 'tile-art'; cnv.setAttribute('aria-hidden', 'true'); const sv = [...b.children].find(e => e.tagName.toLowerCase() === 'svg'); if (sv) b.replaceChild(cnv, sv); else b.insertBefore(cnv, b.firstChild); }
     try { tileArt(b.dataset.sheet, cnv); } catch (e) { console.error(e); }
   });
+  // on the narrowest phones the help tile gives its place to the seventh tile and moves to the top bar as a small round button
+  const hb = $('helpBtn'); if (hb) { let cv = hb.querySelector('canvas'); if (!cv) { cv = mk(72, 72); cv.setAttribute('aria-hidden', 'true'); hb.appendChild(cv); }
+    const c = cv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 72, 72); try { art('drawNabeeh', c, 36, 40, 1.9, { t: 0.3, mood: 'happy' }); } catch (e) { console.error(e); } }
   // the launch button shows the player's own ship
   const lb = $('launchBtn'); if (lb) {
     let cnv = lb.querySelector('canvas'); if (!cnv) { cnv = mk(128, 80); cnv.className = 'launch-art'; cnv.setAttribute('aria-hidden', 'true'); const sv = lb.querySelector('svg'); if (sv) lb.replaceChild(cnv, sv); else lb.insertBefore(cnv, lb.firstChild); }
@@ -725,6 +734,127 @@ function sheetPilot(body) {
   area.oninput = () => { bLoad.dataset.sure = ''; bLoad.textContent = T('bk_load'); };
   row.appendChild(area); const btns = el('div', 'bk-btns'); for (const b of [bSave, bCopy, bFile, bLoad]) btns.appendChild(b); row.appendChild(btns); box.appendChild(row); body.appendChild(box);
 }
+// =============================================================================================
+// v4.2 expeditions: the route sheet (start cards, or the route in progress: sector cards, boon cards)
+let expFly = false;
+function boonPic(cnv, id) {
+  const c = cnv.getContext('2d'), S = cnv.width; c.setTransform(S / 96, 0, 0, S / 96, 0, 0); c.clearRect(0, 0, 96, 96); c.lineJoin = 'round'; c.lineCap = 'round';
+  c.fillStyle = '#231a52'; c.strokeStyle = INK; c.lineWidth = 4; rr(c, 3, 3, 90, 90, 18); c.fill(); c.stroke();
+  const ink = (w = 3.5) => { c.strokeStyle = INK; c.lineWidth = w; c.stroke(); };
+  const circ = (x, y, r, col) => { c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); ink(); };
+  const box = (x, y, w, h, r, col) => { c.fillStyle = col; rr(c, x, y, w, h, r); c.fill(); ink(); };
+  const poly = (pts, col) => { c.fillStyle = col; c.beginPath(); pts.forEach((q, i) => i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1])); c.closePath(); c.fill(); ink(); };
+  const line = (pts, col, w) => { c.strokeStyle = col; c.lineWidth = w; c.beginPath(); pts.forEach((q, i) => i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1])); c.stroke(); };
+  const plus = (x, y, s, col) => { const a = s / 3; poly([[x - a, y - s], [x + a, y - s], [x + a, y - a], [x + s, y - a], [x + s, y + a], [x + a, y + a], [x + a, y + s], [x - a, y + s], [x - a, y + a], [x - s, y + a], [x - s, y - a], [x - a, y - a]], col); };
+  const bolt = (x, y, w, col) => { box(x - w / 2, y - 6, w, 12, 6, col); c.fillStyle = 'rgba(255,255,255,.75)'; rr(c, x - w / 2 + 6, y - 3, Math.max(4, w - 16), 3.5, 2); c.fill(); };
+  const star = (x, y, r1, r2, n, col) => { const pts = []; for (let k = 0; k < n * 2; k++) { const a = k * Math.PI / n - Math.PI / 2, r = k % 2 ? r2 : r1; pts.push([x + Math.cos(a) * r, y + Math.sin(a) * r]); } poly(pts, col); };
+  try {
+    switch (id) {
+      case 'hull': box(22, 27, 52, 44, 8, '#9fb0c8'); for (const [x, y] of [[30, 35], [66, 35], [30, 63], [66, 63]]) { c.fillStyle = '#5b6780'; c.beginPath(); c.arc(x, y, 2.6, 0, TAU); c.fill(); } plus(48, 49, 13, '#3ccf7a'); break;
+      case 'armor': poly([[24, 22], [72, 22], [72, 50], [48, 78], [24, 50]], '#c7cedb'); line([[48, 25], [48, 73]], INK, 3); line([[27, 42], [69, 42]], INK, 3); break;
+      case 'regen': c.save(); c.translate(48, 50); c.rotate(-0.75); box(-6, -6, 12, 38, 5, '#9aa3b8'); circ(0, -14, 15, '#c7cedb'); c.fillStyle = '#231a52'; c.fillRect(-5, -32, 10, 17); line([[-5, -15], [-5, -29]], INK, 3.5); line([[5, -15], [5, -29]], INK, 3.5); line([[-5, -15], [5, -15]], INK, 3.5); c.restore(); break;
+      case 'medic': box(38, 20, 20, 12, 4, '#9aa3b8'); box(20, 29, 56, 44, 9, '#fff8ea'); plus(48, 51, 13, '#e23b4a'); break;
+      case 'dmg': star(64, 48, 22, 11, 8, '#ff7a4a'); bolt(42, 48, 58, '#ffd23f'); break;
+      case 'rate': bolt(40, 29, 46, '#5ef2ff'); bolt(54, 48, 46, '#5ef2ff'); bolt(40, 67, 46, '#5ef2ff'); break;
+      case 'pierce': circ(54, 48, 22, '#8a8178'); c.fillStyle = '#5a524c'; c.beginPath(); c.arc(60, 40, 5, 0, TAU); c.fill(); bolt(48, 48, 78, '#ffd23f'); break;
+      case 'close': poly([[22, 48], [78, 20], [64, 48], [78, 76]], '#ffd23f'); poly([[22, 48], [60, 34], [52, 48], [60, 62]], '#fff8ea'); circ(22, 48, 10, '#e9eef6'); break;
+      case 'weapon': box(22, 26, 52, 46, 8, '#b98a55'); line([[22, 40], [74, 40]], INK, 3); star(48, 54, 14, 6, 5, '#ffd23f'); break;
+      case 'wing': c.save(); c.translate(50, 48); c.scale(2.6, 2.6); PZ.drawWingman(c, 0, 0, 0.3, 0); c.restore(); break;
+      case 'nabeeh': art('drawNabeeh', c, 48, 52, 2.1, { t: 0.3, mood: 'happy' }); break;
+      case 'super': box(26, 34, 64, 28, 10, '#5ef2ff'); c.fillStyle = '#fff'; rr(c, 34, 43, 54, 10, 5); c.fill(); circ(22, 48, 14, '#ffd23f'); break;
+      case 'charge': box(74, 40, 8, 16, 3, '#9aa3b8'); box(16, 30, 58, 36, 8, '#fff8ea'); c.fillStyle = '#3ccf7a'; rr(c, 21, 35, 25, 26, 4); c.fill(); break;
+      case 'power': poly([[56, 12], [26, 52], [45, 52], [38, 84], [70, 42], [51, 42]], '#ffd23f'); break;
+      case 'shield': c.fillStyle = 'rgba(94,242,255,.28)'; c.beginPath(); c.arc(48, 48, 30, 0, TAU); c.fill(); c.strokeStyle = INK; c.lineWidth = 9; c.stroke(); c.strokeStyle = '#5ef2ff'; c.lineWidth = 5; c.stroke(); c.strokeStyle = '#fff'; c.lineWidth = 4; c.beginPath(); c.arc(48, 48, 20, 3.5, 4.6); c.stroke(); break;
+      case 'thorns': star(48, 48, 34, 16, 9, '#ff7a4a'); circ(48, 48, 10, '#ffd23f'); break;
+      case 'engine': poly([[54, 38], [88, 48], [54, 58]], '#ff7a4a'); poly([[54, 43], [72, 48], [54, 53]], '#ffd23f'); poly([[18, 30], [54, 36], [54, 60], [18, 66]], '#9aa3b8'); line([[30, 33], [30, 63]], INK, 3); break;
+      case 'magnet': { const pth = () => { c.beginPath(); c.moveTo(27, 72); c.lineTo(27, 44); c.arc(48, 44, 21, Math.PI, 0); c.lineTo(69, 72); }; c.lineCap = 'butt'; pth(); c.strokeStyle = INK; c.lineWidth = 21; c.stroke(); pth(); c.strokeStyle = '#e23b4a'; c.lineWidth = 14; c.stroke();
+        for (const x of [27, 69]) { c.strokeStyle = '#e9eef6'; c.lineWidth = 14; c.beginPath(); c.moveTo(x, 62); c.lineTo(x, 72); c.stroke(); } c.lineCap = 'round'; break; }
+      case 'calm': circ(60, 48, 17, '#ff5a6a'); c.fillStyle = '#ffd0d4'; c.beginPath(); c.arc(55, 43, 5, 0, TAU); c.fill(); for (const x of [36, 22]) line([[x, 34], [x - 10, 48], [x, 62]], '#9fb4ff', 5); break;
+      case 'radar': for (const r of [18, 31, 44]) { c.strokeStyle = '#5ef2ff'; c.lineWidth = 5.5; c.beginPath(); c.arc(48, 70, r, -2.5, -0.64); c.stroke(); } circ(48, 70, 8, '#ffd23f'); break;
+      case 'lucky': box(24, 42, 48, 34, 6, '#ff7ad1'); box(19, 30, 58, 15, 5, '#ffa9e0'); line([[48, 31], [48, 75]], '#ffd23f', 7); circ(40, 23, 8, '#ffd23f'); circ(56, 23, 8, '#ffd23f'); break;
+      case 'coins': for (let k = 0; k < 3; k++) { c.fillStyle = '#c9930f'; c.beginPath(); c.ellipse(48, 70 - k * 15, 25, 10, 0, 0, TAU); c.fill(); ink(); c.fillStyle = '#ffd23f'; c.beginPath(); c.ellipse(48, 66 - k * 15, 25, 10, 0, 0, TAU); c.fill(); ink(); } break;
+      case 'parts': star(48, 48, 34, 25, 8, '#9aa3b8'); circ(48, 48, 20, '#c7cedb'); circ(48, 48, 8, '#231a52'); break;
+      case 'tow': line([[48, 10], [48, 40]], '#9aa3b8', 6); c.lineCap = 'round'; c.beginPath(); c.arc(48, 56, 16, -Math.PI / 2, Math.PI * 0.95); c.strokeStyle = INK; c.lineWidth = 13; c.stroke(); c.strokeStyle = '#ffd23f'; c.lineWidth = 7; c.stroke(); break;
+      default: star(48, 48, 30, 14, 5, '#ffd23f');
+    }
+  } catch (e) { console.error(e); }
+}
+// the picture on a start card: the route, with a day or a week page for the dated ones
+function expPic(cnv, kind) {
+  const c = cnv.getContext('2d'), W2 = cnv.width, H2 = cnv.height; c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W2, H2);
+  c.fillStyle = '#211a48'; c.fillRect(0, 0, W2, H2); stars(c, W2, H2, 3 + kind.length, 14, 0.6); c.lineJoin = 'round'; c.lineCap = 'round';
+  const n = kind === 'weekly' ? 7 : 4, pts = []; for (let k = 0; k < n; k++) { const f = k / (n - 1); pts.push([34 + f * (W2 - 68), H2 * 0.74 - f * H2 * 0.42 + Math.sin(f * 7) * 12]); }
+  c.strokeStyle = '#9fb4ff'; c.lineWidth = 4; c.setLineDash([3, 9]); c.beginPath(); pts.forEach((q, i) => i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1])); c.stroke(); c.setLineDash([]);
+  pts.forEach((q, i) => { if (!i) return; const last = i === n - 1; c.fillStyle = last ? '#ffd23f' : '#5ef2ff'; c.strokeStyle = INK; c.lineWidth = 3; c.beginPath(); c.arc(q[0], q[1], last ? 13 : 8, 0, TAU); c.fill(); c.stroke(); });
+  c.save(); c.translate(pts[0][0] + 4, pts[0][1] - 4); c.rotate(-0.35); c.scale(0.95, 0.95); try { art('drawShip', c, 0, 0, Object.assign({}, shipLook(), { t: 0.4, tilt: 0, thrust: 1, hurt: 0, shield: 0, beam: false })); } catch (e) {} c.restore();
+  if (kind !== 'ladder') { // a calendar page: one dot for the day, seven for the week
+    c.fillStyle = '#fff8ea'; c.strokeStyle = INK; c.lineWidth = 3; rr(c, 10, 10, 52, 44, 7); c.fill(); c.stroke(); c.fillStyle = '#e23b4a'; rr(c, 10, 10, 52, 13, 7); c.fill(); c.stroke();
+    c.fillStyle = INK; if (kind === 'daily') { c.beginPath(); c.arc(36, 38, 7, 0, TAU); c.fill(); } else for (let k = 0; k < 7; k++) { c.beginPath(); c.arc(18 + (k % 4) * 12 + (k > 3 ? 6 : 0), k > 3 ? 45 : 33, 3.6, 0, TAU); c.fill(); }
+  }
+}
+// the route so far: done stops, the stop the ship is at, the stops ahead (the last one is the guardians' gate)
+function routeStrip(n, i) {
+  const cv = mk(n * 44 + 8, 48); cv.className = 'ex-route'; cv.style.width = (n * 22 + 4) + 'px'; cv.setAttribute('aria-hidden', 'true');
+  const c = cv.getContext('2d'); c.lineCap = 'round'; c.lineJoin = 'round'; if (lang() === 'ar') { c.translate(cv.width, 0); c.scale(-1, 1); }
+  c.strokeStyle = 'rgba(28,21,48,.35)'; c.lineWidth = 5; c.beginPath(); c.moveTo(26, 24); c.lineTo(n * 44 - 18, 24); c.stroke();
+  for (let k = 0; k < n; k++) {
+    const x = 26 + k * 44, last = k === n - 1, r = k === i ? 15 : 11; c.fillStyle = k < i ? '#3ccf7a' : k === i ? '#ffd23f' : '#d6cfc2'; c.strokeStyle = INK; c.lineWidth = 3.5;
+    c.beginPath(); if (last) { c.moveTo(x, 24 - r - 2); c.lineTo(x + r + 2, 24); c.lineTo(x, 24 + r + 2); c.lineTo(x - r - 2, 24); c.closePath(); } else c.arc(x, 24, r, 0, TAU); c.fill(); c.stroke();
+    if (k < i) { c.strokeStyle = '#fff'; c.lineWidth = 3.5; c.beginPath(); c.moveTo(x - 5, 24); c.lineTo(x - 1, 28); c.lineTo(x + 6, 20); c.stroke(); }
+  }
+  return cv;
+}
+function sheetExp(body0) {
+  const X = MM('expInfo'); if (!X) return;
+  const body = el('div', 'ex-view'); body0.appendChild(body);   // one block: the choice is never dealt over two pages, the sheet is scaled to fit instead
+  const R = X.run, again = () => openSheet('exp');
+  if (!R) {
+    body.appendChild(el('p', 'hint', T('ex_note')));
+    const g = el('div', 'cards ct-cards ex-cards keep');
+    ['ladder', 'daily', 'weekly'].forEach((kind, k) => {
+      const done = kind !== 'ladder' && X[kind].done, cc = el('div', 'card ct' + (done ? ' done' : '')), cnv = mk(192, 144); cnv.setAttribute('aria-hidden', 'true'); cc.appendChild(cnv);
+      setTimeout(() => expPic(cnv, kind), 10 + k * 20);
+      cc.appendChild(el('b', null, T('ex_' + kind))); cc.appendChild(el('small', null, T('ex_depthN', X.depths[kind], X.sectors[kind])));
+      cc.appendChild(el('small', 'ex-sub', kind === 'ladder' ? T('ex_best', X.best) : T('ex_' + kind + '_d')));
+      cc.appendChild(cardBtn({ text: T(done ? 'ex_doneK' : 'ex_start'), cls: done ? 'sec' : '', disabled: done, onClick: () => { if (MM('expStart', kind)) { hook('sfx', 'chime'); again(); } } }));
+      g.appendChild(cc);
+    });
+    body.appendChild(g);
+    body.appendChild(el('p', 'hint ex-foot', T('ex_seen', X.seen.boons, (M.BOONS || []).length, X.seen.mut, (M.MUTATORS || []).length, X.seen.types, (M.MISSION_TYPES || []).length) + ' · ' + T('ex_parts', X.parts) + ' · ' + T('ex_partsNote')));
+    return;
+  }
+  // the route in progress: where the ship is, what it carries, and the choice in front of it
+  const head = el('div', 'ex-head'); head.appendChild(routeStrip(R.n, R.i));
+  const tx = el('div', 'ex-tx'); tx.appendChild(el('b', null, T('ex_' + R.kind) + ' · ' + T('ex_depth', R.depth) + ' · ' + T('ex_sector', R.i + 1, R.n)));
+  tx.appendChild(el('small', null, (R.lost > 0 ? T('ex_hullLost', R.lost) : T('ex_hullFull')) + ' · ' + T('ex_tows', R.tows) + ' · ' + T('ex_partsRun', R.parts)));
+  head.appendChild(tx);
+  if (R.boons.length) { const bw = el('div', 'ex-boons'); bw.setAttribute('role', 'img'); bw.setAttribute('aria-label', T('ex_boons') + ': ' + R.boons.map(b => T('bn_' + b)).join(', ')); for (const b of R.boons) { const cv = mk(64, 64); cv.title = T('bn_' + b) + ' · ' + T('bn_' + b + '_d'); boonPic(cv, b); bw.appendChild(cv); } head.appendChild(bw); }
+  const ab = el('button', 'ghost small ex-ab', T('ex_abandon')); ab.type = 'button';
+  ab.onclick = () => { if (ab.dataset.sure !== '1') { ab.dataset.sure = '1'; ab.textContent = T('ex_abandonSure'); fitSoon(); return; } const kept = MM('expAbandon') | 0; note(T('ex_left', kept), 2600); again(); };
+  head.appendChild(ab); body.appendChild(head);
+  body.appendChild(el('p', 'hint', T(R.stage === 'boon' ? 'ex_pickBoon' : 'ex_pickSector')));
+  const g = el('div', 'cards ct-cards ex-cards keep');
+  if (R.stage === 'boon') {
+    for (const id of R.boonOpts) {
+      const cc = el('div', 'card ct bn'), cnv = mk(144, 144); cnv.setAttribute('aria-hidden', 'true'); boonPic(cnv, id); cc.appendChild(cnv);
+      cc.appendChild(el('b', null, T('bn_' + id))); cc.appendChild(el('small', null, T('bn_' + id + '_d')));
+      cc.appendChild(cardBtn({ text: T('ex_take'), onClick: () => { if (MM('expBoon', id)) { hook('sfx', 'chime'); again(); } } }));
+      g.appendChild(cc);
+    }
+  } else {
+    R.opts.forEach((o, k) => {
+      const cc = el('div', 'card ct risk' + o.k), cnv = mk(192, 144); cnv.setAttribute('aria-hidden', 'true'); cc.appendChild(cnv);
+      setTimeout(() => missionPic(cnv, o.type, o.jid), 10 + k * 20);
+      cc.appendChild(el('b', null, T('mt_' + o.type)));
+      const rk = el('span', 'ct-tiers ex-risk'); rk.appendChild(el('em', 'rk' + o.k, T('ex_risk' + o.k))); rk.appendChild(el('em', null, jName(o.jid))); cc.appendChild(rk);
+      cc.appendChild(el('small', null, goalLabel(o.spec)));
+      if (o.mut.length) { const ms = el('small', 'ct-mut'); ms.textContent = o.mut.map(m => T('mu_' + m)).join(' · '); cc.appendChild(ms); }
+      const b = cardBtn({ text: T('ct_fly'), onClick: () => { const sp = MM('expPick', o.k); if (!sp) return; closeSheet(); stopTips(); expFly = true; if (hook('onMission', sp) === false) { expFly = false; note(T('m_locked')); } } });
+      b.appendChild(el('span', 'ct-pay', T('ex_partsN', o.parts))); cc.appendChild(b); g.appendChild(cc);
+    });
+  }
+  body.appendChild(g);
+}
 function rankChip() {
   const b = $('rankChip'); if (!b) return; const R = MM('rankInfo') || { rank: 1 };
   let cv = b.querySelector('canvas'); if (!cv) { cv = mk(96, 96); cv.setAttribute('aria-hidden', 'true'); b.insertBefore(cv, b.firstChild); }
@@ -809,6 +939,12 @@ export function renderMenu() {
     dt.setAttribute('aria-label', T('b_duels') + (dOpen ? '' : ' · ' + T('du_lock')));
     const dd = $('dotDuels'); if (dd) dd.hidden = !duelDot();
   }
+  // expeditions tile: locked until Mars is done; the dot says a route is waiting (one in progress, or today's)
+  const xi = MM('expInfo') || {}, xt = document.querySelector('[data-sheet="exp"]');
+  if (xt) {
+    xt.classList.toggle('shut', !xi.open); xt.setAttribute('aria-disabled', xi.open ? 'false' : 'true'); xt.setAttribute('aria-label', T('b_exp') + (xi.open ? '' : ' · ' + T('ex_lock')));
+    const xd = $('dotExp'); if (xd) xd.hidden = !(xi.open && (xi.run || !xi.daily.done));
+  }
   bakeSoon(themeOf(selJ));
 }
 // today's duel bonus is still there, or a rival is waiting
@@ -860,6 +996,7 @@ export function showMenu() {
   renderMenu(); startTips();
   if (!avMenuAnim || !anims.has(avMenuAnim)) avMenuAnim = addAnim($('avMenu'), t => drawDuoCanvas($('avMenu'), t, { planet: null, abood: { pose: 'wave' }, nabeeh: { mood: 'happy', talk: Math.sin(t * 2.2) > 0.4 } }), 'menu');
   maybeToast();
+  expFly = false;
   if (pendingSheet) { const k = pendingSheet; pendingSheet = null; openSheet(k); } else maybeLogin();
 }
 export function hideMenus() {
@@ -901,13 +1038,14 @@ function maybeLogin() {
 }
 const SHEETS = {
   hangar: ['hg_title', sheetHangar], costumes: ['cs_title', sheetCostumes], missions: ['ms_title', sheetMissions], duels: ['du_title', sheetDuels],
-  badges: ['bg_title', sheetBadges], help: ['help_title', sheetHelp], contracts: ['ct_title', sheetContracts], pilot: ['pl_title', sheetPilot],
+  badges: ['bg_title', sheetBadges], help: ['help_title', sheetHelp], contracts: ['ct_title', sheetContracts], pilot: ['pl_title', sheetPilot], exp: ['ex_title', sheetExp],
 };
 const SHEET_ALIAS = { suits: 'costumes', wardrobe: 'costumes', shop: 'hangar' };
 export function openSheet(kind) {
   kind = SHEET_ALIAS[kind] || kind;
   const S2 = SHEETS[kind]; if (!S2) return;
   if (kind === 'duels' && !MM('duelsOpen')) { note(T('du_lock'), 2600); return; }
+  if (kind === 'exp' && !MM('expOpen')) { note(T('ex_lock'), 2600); return; }
   const body = $('sheetBody'), same = kind === sheetKind, wasOpen = !$('sheet').hidden;
   { const sp = body.closest('.sheet'); if (sp) { sp.style.transform = ''; sp.style.maxHeight = ''; } }   // measure the sheet unscaled
   if (!wasOpen) { sheetFrom = document.querySelector('[data-sheet="' + kind + '"]'); hideNote(); }
@@ -1630,6 +1768,7 @@ export function hud(s) {
 export function showPause(on) {
   const p = $('pause'); if (!p) return;
   p.hidden = !on;
+  $('restartBtn').hidden = expFly; { const pe = $('pauseExp'); if (pe) { pe.hidden = !expFly; if (expFly) pe.textContent = T('ex_pause'); } }
   $('pauseBtn').innerHTML = svgI(on ? 'play' : 'pause');
   if (on) { syncMute(); syncFps(); hideNote(); const t = $('toast'); if (t) t.hidden = true; if (kbd) try { $('resumeBtn').focus({ preventScroll: true }); } catch (e) {} }
 }
@@ -1744,9 +1883,12 @@ function fillResult(r, animate) {
   panel.classList.toggle('win', !!r.win); panel.classList.toggle('lose', !r.win); panel.classList.toggle('postcard', arrived); panel.classList.toggle('duel', duel);
   const run = r.run || {};
   if (duel) $('overTitle').textContent = r.win ? T('du_fixedTitle', rvName(r.rid)) : T('du_lose');
+  else if (r.mission && r.exp) $('overTitle').textContent = r.exp.done ? T('ex_doneT') : r.exp.over ? T('ex_overT') : r.exp.tow ? T('ex_towT') : r.win ? T('ex_secT', r.exp.sector, r.exp.sectors) : T('ms_failT');
   else if (r.mission) $('overTitle').textContent = r.win ? T('ms_winT') : T('ms_failT');
   else $('overTitle').textContent = !r.win ? T('r_fail') : arrived ? T('r_arrive', pName(planetId)) : T('r_win');
   if (animate || !r.botLine) r.botLine = TL(duel ? (r.win ? 'bot_duelWin' : 'bot_duelLose') : arrived ? 'bot_arrive' : r.win ? 'bot_win' : 'bot_lose');
+  // an expedition's news is said by Nabeeh, so it is read on every screen (the message line is hidden on short phones)
+  if (r.exp && (r.exp.tow || r.exp.over || r.exp.depthUp)) r.botLine = r.exp.tow ? T('ex_towMsg', r.exp.tows) : r.exp.over ? T('ex_overMsg', r.exp.kept) : T('ex_depthUp', r.exp.depthUp);
   $('overBotTxt').textContent = r.botLine;
   let msg;
   if (duel) msg = r.win ? '«' + T('rv_' + r.rid + '_fixed') + '» ' + T('du_win') : T('r_failHint') + ' ' + T('r_tryUpgrade');
@@ -1755,7 +1897,8 @@ function fillResult(r, animate) {
   else if (r.newBest) msg = T('r_newBest');
   else if (run.noHit || run.hits === 0) msg = T('r_noHit');
   else msg = T('m_legOf', r.li, 3) + ' · ' + legName(r.jid, r.li);
-  if (r.mission) msg = T('mt_' + r.mission.type) + (r.tier > 1 ? ' · ' + T('ct_tier', r.tier) : '') + ' · ' + (r.goalText || '') + (r.win && r.reward ? ' · ' + T('ct_reward', r.reward) : '');
+  if (r.mission && r.exp) { const x = r.exp; msg = T('mt_' + r.mission.type) + ' · ' + (r.goalText || '') + ' · ' + (x.done ? T('ex_partsN', x.total) + ' · ' + T('ct_reward', r.reward) + (x.depthUp ? ' · ' + T('ex_depthUp', x.depthUp) : '') : x.over || x.tow ? T('ex_sector', x.sector, x.sectors) : T('ex_partsN', x.parts)); }   // a tow or the end is Nabeeh's line above
+  else if (r.mission) msg = T('mt_' + r.mission.type) + (r.tier > 1 ? ' · ' + T('ct_tier', r.tier) : '') + ' · ' + (r.goalText || '') + (r.win && r.reward ? ' · ' + T('ct_reward', r.reward) : '');
   else if (!duel && r.win && +run.rescueTotal > 0) msg += ' · ' + T('r_rescued', Math.min(run.rescued | 0, run.rescueTotal | 0), run.rescueTotal | 0);
   $('overMsg').textContent = msg;
   // stars (new ones pop in)
@@ -1786,7 +1929,8 @@ function fillResult(r, animate) {
     $('sBest').parentElement.classList.toggle('nb', !!r.newBest);
   } else {
     setScore(0, nf(run.score || 0), T('r_score')); setScore(1, nf(run.kills || 0), T('r_kills'));
-    setScore(2, nf(r.best != null ? r.best : M.best(r.jid)), r.newBest ? T('r_newBest') : T('r_best'));
+    if (r.exp) setScore(2, '+' + nf(r.exp.done ? r.exp.total : r.exp.over ? r.exp.kept : r.exp.parts), T('ex_partsL'));   // an expedition counts parts, not a best score
+    else setScore(2, nf(r.best != null ? r.best : M.best(r.jid)), r.newBest ? T('r_newBest') : T('r_best'));
     $('sBest').parentElement.classList.toggle('nb', !!r.newBest);
   }
   // coin multiplier line
@@ -1822,8 +1966,9 @@ function fillResult(r, animate) {
   // v3.2: unlocks, level-ups, badges and missions no longer pile up on the card: they play as toasts (rqItems)
   r.rq = rqItems(r, duel);
   // buttons: legs = Next / Retry / Station; duels = Duels / Rematch / Station
-  const nb = $('nextBtn'), rb = $('retryBtn');
-  if (duel) {
+  const nb = $('nextBtn'), rb = $('retryBtn'); rb.hidden = false;
+  if (r.exp) { nb.hidden = false; nb.className = 'btn'; nb.textContent = T(r.exp.done || r.exp.over ? 'b_exp' : 'ex_route'); rb.hidden = true; }
+  else if (duel) {
     nb.hidden = false; nb.className = r.win ? 'btn' : 'btn alt'; nb.textContent = T('b_duels');
     rb.className = r.win ? 'btn alt' : 'btn'; rb.textContent = rematchText();
   } else {
@@ -2027,11 +2172,16 @@ export function initUI(h) {
   // pause card
   $('resumeBtn').onclick = () => hook('onResume');
   $('restartBtn').onclick = () => { if (duelOn) pendingDuel = duelOn; hook('onRetry'); };
-  $('pauseQuit').onclick = () => hook('onQuit');
+  $('pauseQuit').onclick = () => {
+    if (!expFly) { hook('onQuit'); return; }
+    pendingSheet = 'exp'; hook('onQuit');   // the sector left midway is settled as lost: say what that cost
+    const x = (MM('expInfo') || {}).run; note(x ? T('ex_towMsg', x.tows) : T('ex_overT'), 3200);
+  };
   // results
   $('nextBtn').onclick = () => {
     endCount();
     if (lastRes && lastRes.duel) { if (typeof H.onDuels === 'function') hook('onDuels'); else { pendingSheet = 'duels'; hook('onQuit'); } return; }
+    if (lastRes && lastRes.exp) { pendingSheet = 'exp'; hook('onQuit'); return; }
     const n = nextTarget(lastRes); if (n) cur = { jid: n.jid, li: n.li }; hook('onNext');
   };
   $('retryBtn').onclick = () => {

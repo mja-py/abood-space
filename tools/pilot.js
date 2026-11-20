@@ -94,3 +94,30 @@ export function missions(jid, lv, seeds = [1], types = null, depth = 0, mut = []
   })();
   return 'started';
 }
+
+// a whole expedition in the background: at each stop it takes option `pick` (0 safe, 1 steady, 2 risky) and a boon in turn.
+//   P.expedition(15)            the deep-space ladder at the save's depth, ship level 15; read P.result() until done
+//   P.expedition(27, 'weekly', 2, 12)   the weekly route, risky sectors, with the ladder set to depth 12
+export function expedition(lv, kind = 'ladder', pick = 1, depth = null) {
+  RES = null; PROG = [];
+  (async () => {
+    const M = await import('/js/meta.js?v=__BUILD__'), g = window.__game, d = g.debug, D = M.data();
+    if (M.expInfo().run) M.expAbandon();
+    if (depth) D.exp.depth = depth;
+    if (kind !== 'ladder') D.exp[kind] = { id: null, done: false };
+    if (!M.expStart(kind)) { RES = 'could not start'; return; }
+    for (let n = 0; n < 60 && M.expInfo().run; n++) {
+      const X = M.expInfo().run;
+      if (X.stage === 'boon') { const b = X.boonOpts[n % X.boonOpts.length]; PROG.push('   boon ' + b + ' (of ' + X.boonOpts.join(', ') + ')'); M.expBoon(b); continue; }
+      const o = X.opts.find(q => q.k === pick) || X.opts[X.opts.length - 1], sp = M.expPick(o.k);
+      const r = await fly(sp.jid, 1, lv, { spec: sp });
+      for (let k = 0; k < 60 * 25 && g.state() !== 'over'; k++) d.step(1 / 60, 1);   // the arrival (or the wreck) plays out, so the sector is settled
+      const Y = M.expInfo();
+      PROG.push(`s${sp.sector}/${sp.sectors} ${r.leg} d${sp.depth} [${sp.mut}] in-lost${sp.lost} boons${sp.boons.length} ${r.st === 'arrive' ? 'WON' : r.st} t${r.secs} hits${r.hits} hp${r.hp} thr${r.threat}${r.fights ? ' | ' + r.fights : ''}${r.errs.length ? ' ERR ' + r.errs[0] : ''} -> `
+        + (Y.run ? `at ${Y.run.i + 1}/${Y.run.n} lost${Y.run.lost} tows${Y.run.tows} parts${Y.run.parts} ${Y.run.stage}` : `ENDED depth${Y.depth} best${Y.best} parts${Y.parts}`));
+      await new Promise(r2 => setTimeout(r2, 0));
+    }
+    RES = PROG.join('\n');
+  })();
+  return 'started';
+}

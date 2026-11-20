@@ -708,13 +708,18 @@ export function mission(spec) {
   const j = journeyIndex(spec.jid); if (j < 0) return null;
   const J = JOURNEYS[j], L = J.legs[1], F = FLAV[spec.jid] || FLAV.moon, type = MISSION_TYPES.includes(spec.type) ? spec.type : 'fly', mut = (spec.mut || []).filter(m => MUTATORS.includes(m)), depth = spec.depth | 0;
   const R = rng((spec.seed >>> 0) || 1), any = a => a[Math.floor(R() * a.length)];
-  const C = Object.assign({}, curve(clamp(j + Math.floor(depth / 4), 0, CURVE.length - 1), clamp(depth % 4, 0, 2), false));
+  // depth walks the curve four steps per journey; past the last row it keeps climbing (`over`): tougher, more and quicker robots
+  const lvl = j * 4 + Math.max(0, depth), capL = (CURVE.length - 1) * 4 + 2, over = Math.max(0, lvl - capL), cj = Math.min(CURVE.length - 1, Math.floor(lvl / 4));
+  const C = Object.assign({}, curve(cj, over > 0 ? 2 : clamp(lvl % 4, 0, 2), false));
+  if (over > 0 && C.robots) { C.hp = Math.round(C.hp * (1 + 0.1 * over)); C.n += Math.min(3, Math.floor(over / 3)); C.tokens += Math.min(3, Math.floor(over / 4)); C.shotV = Math.round(C.shotV * Math.min(1.35, 1 + 0.025 * over)); C.every = +(C.every * Math.max(0.7, 1 - 0.03 * over)).toFixed(2); }
   const D = spec.len || { fly: 95, rescue: 100, escort: 105, hold: 95, haul: 85, bossrush: 14, time: 75, hunt: 100 }[type];
   const r = f => Math.round(f * D), beats = [], assist = Object.assign({}, J.assist || {}), tr = mut.includes('traffic') ? 1.7 : 1, el = mut.includes('elites');
   const wave = (f, n = C.n, e = 0) => { if (C.robots) beats.push({ t: r(f), kind: 'wave', form: 'robots', n: Math.max(1, n), elite: el ? n : e }); else beats.push(...piece(R() < 0.5 ? 'squad' : 'line', r(f), j, 1, D)); };
   const pc = (name, f) => beats.push(...piece(name, r(f), j, 1, D));
   const fill = (rate, mix) => beats.push({ t: 1, kind: 'filler', dur: r(0.92), rate: rate * tr, mix: mix || null });
   const sets = [...F.mid, ...F.twist].filter(n => n !== 'grabber'), waves = [...F.waveA, ...F.waveB];
+  // what is protected grows with the threat (the robots' answer to an upgraded ship), or upgrades would make these missions harder
+  const wardHp = n => Math.round(n * Math.pow(threat(j, totalLevels()), 2));   // game.js also aims fewer shots at it as the threat grows
   let goal = { kind: 'finish' }, rescueTotal = 0, ward = null;
   beats.push({ t: 0, kind: 'meteorsOff', dur: r(0.2) });
   if (type !== 'bossrush') beats.push({ t: r(0.34), kind: 'carrier' });
@@ -723,8 +728,8 @@ export function mission(spec) {
   else if (type === 'rescue') { const need = clamp(4 + Math.floor(depth / 2), 4, 7); rescueTotal = need + 2; goal = { kind: 'rescued', need };
     fill(0.8); for (let i = 0; i < rescueTotal; i++) beats.push({ t: r(0.1 + 0.76 * i / (rescueTotal - 1)), kind: 'pods', n: 1, over: 1 });
     wave(0.22); wave(0.5, C.n, 1); wave(0.78, C.n + 1, 1); pc(any(waves), 0.36); }
-  else if (type === 'escort') { ward = { kind: 'tanker', hp: 8 + j }; goal = { kind: 'protect' }; fill(0.9); wave(0.14); pc('squad', 0.3); wave(0.42, C.n, 1); wave(0.62, C.n + 1, 1); pc('squad', 0.72); wave(0.84, C.n + 1, 1); }
-  else if (type === 'hold') { ward = { kind: 'station', hp: 18 + j * 2 }; goal = { kind: 'protect' }; fill(0.45); for (let i = 0; i < 6; i++) wave(0.1 + i * 0.14, C.n + (i > 2 ? 1 : 0), i > 3 ? 1 : 0); pc('cascade', 0.5); pc('squad', 0.62); }
+  else if (type === 'escort') { ward = { kind: 'tanker', hp: wardHp(Math.max(12, 8 + j)) }; goal = { kind: 'protect' }; fill(0.9); wave(0.14); pc('squad', 0.3); wave(0.42, C.n, 1); wave(0.62, C.n + 1, 1); pc('squad', 0.72); wave(0.84, C.n + 1, 1); }
+  else if (type === 'hold') { ward = { kind: 'station', hp: wardHp(Math.max(28, 18 + j * 2)) }; goal = { kind: 'protect' }; fill(0.45); for (let i = 0; i < 6; i++) wave(0.1 + i * 0.14, C.n + (i > 2 ? 1 : 0), i > 3 ? 1 : 0); pc('cascade', 0.5); pc('squad', 0.62); }
   else if (type === 'haul') { goal = { kind: 'crystals', need: 18 + j * 2 + depth * 2 }; fill(1.3, { crystal: 2, rockS: 4, rockM: 2 }); wave(0.3); wave(0.7, C.n, 1); pc(any(sets), 0.5); }
   else if (type === 'time') { // machines only (rocks do not count): eight waves, and about half of what flies in must be fixed before the clock runs out
     let tot = 0; for (let i = 0; i < 8; i++) { const n = C.n + (i > 2 ? 1 : 0); tot += n; wave(0.08 + i * 0.11, n, i > 4 ? 1 : 0); }
@@ -741,10 +746,11 @@ export function mission(spec) {
   const mods = []; if (mut.includes('dark')) mods.push('dark'); if (mut.includes('gravity')) mods.push('magnet'); if (mut.includes('wind')) mods.push('wind');
   return { jid: spec.jid, li: 1, hard: false, dur: D, star: 1e12, speedScale: assist.speedScale || 1, warnPlus: assist.warnPlus || 0, assist, hpMul: L.hp > 0 ? L.hp : 1,
     beats, rescueTotal, boss: null, bossAtk: assist.bossAtk || 1, curve: C, mods,
-    mission: { id: spec.id || null, jid: spec.jid, ci: spec.ci, type, goal, mut, seed: spec.seed, depth, ward } };
+    over, mission: { id: spec.id || null, jid: spec.jid, ci: spec.ci, type, goal, mut, seed: spec.seed, depth, ward, exp: !!spec.exp, sector: spec.sector | 0, sectors: spec.sectors | 0 } };
 }
 // settle a mission: coins picked are always kept; a contract pays its prize (more the first time) and counts for the gates
 export function finishMission(spec, run = {}, win = false) {
+  if (spec && spec.exp) return expSettle(spec, run, win);
   const e = endLike(run, !win), id = spec && spec.id, jid = spec && spec.jid, tier = clamp((spec && spec.tier) | 0 || 1, 1, TIERS), first = !!(win && id && tierOf(id) < tier);
   let reward = 0, xp = 0, rankUp = null;
   if (win && id) {
@@ -760,6 +766,119 @@ export function finishMission(spec, run = {}, win = false) {
     stars: null, newStars: [], starPay: 0, coinMult: e.coinMult, levelUp: e.levelUp, girl: e.girl, gate: null, played: true, xp, rankUp, contract: id, tier, tiers: id ? tierOf(id) : 0, done: contractsDone(jid) };
 }
 
+// =============================================================================================
+// v4.2 EXPEDITIONS: a route of SECTORS through deep space, built fresh from a seed. Each sector is a generated mission.
+// Before a sector the pilot picks one of three (safe, steady, risky: the type, the twists and the parts it pays are shown);
+// after a won sector they pick one BOON that lasts for the rest of the expedition. The hull is carried from sector to
+// sector (one point is repaired at each stop). A lost sector costs a TOW (one per expedition); with none left the
+// expedition is over and half the parts found so far are kept.
+//   ladder  the deep-space ladder: finishing depth n opens depth n + 1 (five sectors, one more every ten depths)
+//   daily   one route a day, the same for everybody (the seed is the date); weekly: ten sectors, the seed is the week
+// Nothing of the 100% is tied to the calendar: daily and weekly only pay extra parts and coins.
+export const EXP_DEPTH = 50;   // the depth the completion bar asks for
+export const BOONS = ['hull', 'armor', 'regen', 'medic', 'dmg', 'rate', 'pierce', 'close', 'weapon', 'wing', 'nabeeh', 'super', 'charge', 'power',
+  'shield', 'thorns', 'engine', 'magnet', 'calm', 'radar', 'lucky', 'coins', 'parts', 'tow'];
+const EXP_TYPES = ['fly', 'rescue', 'escort', 'hold', 'haul', 'time', 'hunt'], EXP_KINDS = ['ladder', 'daily', 'weekly'];
+export const expSectors = (kind, depth) => kind === 'weekly' ? 10 : kind === 'daily' ? 5 : clamp(5 + Math.floor(depth / 10), 5, 10);
+export const weekId = () => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+export const expOpen = () => legsDone('mars') >= 3;
+function expS() {
+  const E = isObj(S.exp) ? S.exp : (S.exp = {});
+  E.depth = clamp(Math.floor(+E.depth || 1), 1, 999); E.best = clamp(Math.floor(+E.best || 0), 0, 999); E.wins = Math.max(0, Math.floor(+E.wins || 0));
+  if (!isObj(E.seen)) E.seen = {}; for (const k of ['boons', 'mut', 'types']) if (!isObj(E.seen[k])) E.seen[k] = {};
+  for (const k of ['daily', 'weekly']) if (!isObj(E[k])) E[k] = { id: null, done: false };
+  const r = E.run;
+  if (r && !(isObj(r) && EXP_KINDS.includes(r.kind) && r.n >= 1 && r.i >= 0 && r.i < r.n && Array.isArray(r.boons) && (r.stage === 'boon' ? Array.isArray(r.boonOpts) : Array.isArray(r.opts)))) E.run = null;
+  return E;
+}
+// the themes an expedition flies through: the last three journeys the pilot has finished (never the Moon)
+const expPool = () => { const done = JOURNEYS.map((J, j) => j).filter(j => j >= 1 && legsDone(JOURNEYS[j].id) >= 3); return (done.length ? done.slice(-3) : [1]).map(j => JOURNEYS[j].id); };
+const okMut = (type, m) => !(type === 'bossrush' && (m === 'traffic' || m === 'elites' || m === 'swarm' || m === 'wind')) && !((type === 'hunt' || type === 'time') && m === 'swarm');
+function expOptions(r) {
+  const R = rng(hash32(r.seed + ':s' + r.i)), pool = expPool(), D = r.depth, last = r.i >= r.n - 1, types = EXP_TYPES.slice(), out = [], nMut = Math.min(3, Math.floor((D - 1) / 4));
+  const off = Math.floor(R() * pool.length);
+  for (const k of last ? [1, 2] : [0, 1, 2]) {
+    const type = last ? 'bossrush' : types.splice(Math.floor(R() * types.length), 1)[0], jid = pool[(off + k) % pool.length];
+    const mp = MUTATORS.filter(m => okMut(type, m)), mut = [], want = clamp(nMut + (k === 2 ? 1 : k === 0 ? -1 : 0), 0, 4);
+    // the risky sector's first twist is never the friendly one (a power on a short cooldown)
+    for (let q = 0; q < want && mp.length; q++) { let ix = Math.floor(R() * mp.length); if (k === 2 && q === 0 && mp[ix] === 'quickPower') ix = (ix + 1) % mp.length; mut.push(mp.splice(ix, 1)[0]); }
+    out.push({ k, jid, type, mut, depth: Math.floor((D - 1) / 2) + (k === 2 ? 1 : 0) + (r.i * 2 >= r.n ? 1 : 0), seed: hash32(r.seed + ':s' + r.i + ':o' + k),
+      parts: Math.round((2 + D / 3) * [1, 1.5, 2.5][k] * (last ? 1.5 : 1)) });
+  }
+  return out;
+}
+const expBoonOpts = r => { const R = rng(hash32(r.seed + ':b' + r.i)), left = BOONS.filter(b => !r.boons.includes(b)), out = []; while (out.length < 3 && left.length) out.push(left.splice(Math.floor(R() * left.length), 1)[0]); return out; };
+const expSpec = (r, o) => ({ id: null, exp: true, kind: r.kind, jid: o.jid, type: o.type, mut: o.mut.slice(), depth: o.depth, seed: o.seed, boons: r.boons.slice(), lost: r.lost | 0,
+  sector: r.i + 1, sectors: r.n, k: o.k });
+// a daily or weekly route that was left unfinished when its day or week ended: what it found is kept, the route is gone
+function expStale(E) { const r = E.run; if (r && ((r.kind === 'daily' && r.id !== today()) || (r.kind === 'weekly' && r.id !== weekId()))) { S.parts = (S.parts | 0) + (r.parts | 0); E.run = null; save(); } }
+export function expInfo() {
+  const E = expS(); expStale(E);
+  const r = E.run, cnt = o => Object.keys(o).length;
+  return { open: expOpen(), depth: E.depth, best: E.best, target: EXP_DEPTH, wins: E.wins, parts: S.parts | 0,
+    sectors: { ladder: expSectors('ladder', E.depth), daily: 5, weekly: 10 }, depths: { ladder: E.depth, daily: Math.max(1, E.depth - 1), weekly: E.depth },
+    daily: { done: E.daily.id === today() && !!E.daily.done }, weekly: { done: E.weekly.id === weekId() && !!E.weekly.done },
+    seen: { boons: cnt(E.seen.boons), mut: cnt(E.seen.mut), types: cnt(E.seen.types) },
+    run: r ? { kind: r.kind, depth: r.depth, n: r.n, i: r.i, lost: r.lost | 0, tows: r.tows | 0, boons: r.boons.slice(), stage: r.stage, parts: r.parts | 0,
+      opts: r.stage === 'sector' ? r.opts.map(o => Object.assign({}, o, { spec: expSpec(r, o) })) : [], boonOpts: r.stage === 'boon' ? r.boonOpts.slice() : [] } : null };
+}
+export function expStart(kind) {
+  const E = expS(); expStale(E);
+  if (!expOpen() || E.run || !EXP_KINDS.includes(kind)) return false;
+  const id = kind === 'daily' ? today() : kind === 'weekly' ? weekId() : null;
+  if (kind !== 'ladder' && E[kind].id === id && E[kind].done) return false;
+  const depth = kind === 'daily' ? Math.max(1, E.depth - 1) : E.depth;
+  const r = E.run = { kind, id, seed: kind === 'ladder' ? 'L' + depth + ':' + Math.floor(Math.random() * 1e9) : kind[0].toUpperCase() + id, depth, n: expSectors(kind, depth), i: 0, lost: 0, tows: 1, boons: [],
+    stage: 'sector', opts: null, boonOpts: null, parts: 0, pick: null };
+  r.opts = expOptions(r); save(); return true;
+}
+export function expPick(k) {
+  const E = expS(), r = E.run; if (!r || r.stage !== 'sector') return null;
+  const o = r.opts.find(x => x.k === k); if (!o) return null;
+  r.pick = k; save(); return expSpec(r, o);
+}
+export function expBoon(id) {
+  const E = expS(), r = E.run; if (!r || r.stage !== 'boon' || !r.boonOpts.includes(id)) return false;
+  r.boons.push(id); E.seen.boons[id] = 1; if (id === 'tow') r.tows = (r.tows | 0) + 1;
+  r.stage = 'sector'; r.boonOpts = null; r.opts = expOptions(r); save(); return true;
+}
+export function expAbandon() {
+  const E = expS(), r = E.run; if (!r) return 0;
+  const kept = Math.floor((r.parts | 0) / 2); S.parts = (S.parts | 0) + kept; E.run = null; save(); return kept;
+}
+// a sector is over. Won: its parts, the hull carried on (one point repaired), then a boon, or the end of the route.
+// Lost: a tow brings the ship back to the same stop; without one the expedition ends and half the parts are kept.
+function expSettle(spec, run, win) {
+  const e = endLike(run, !win), E = expS(), r = E.run;
+  const X = { kind: spec.kind, sector: spec.sector | 0, sectors: spec.sectors | 0, depth: r ? r.depth : 0, parts: 0, bonus: 0, kept: 0, done: false, over: false, tow: false, tows: 0, depthUp: 0, total: 0 };
+  let reward = 0, xp = 0, rankUp = null;
+  if (r) {
+    const o = r.opts && (r.opts.find(x => x.k === r.pick) || r.opts[0]), D = r.depth;
+    if (win && o) {
+      E.seen.types[o.type] = 1; for (const m of o.mut) E.seen.mut[m] = 1;
+      X.parts = Math.round(o.parts * (r.boons.includes('parts') ? 1.5 : 1)); r.parts += X.parts;
+      r.lost = Math.max(0, (run.maxHp | 0) - (run.hpEnd | 0) - 1 - (r.boons.includes('medic') ? 1 : 0));
+      r.i++; r.pick = null;
+      let g = gainXp(40 + 4 * D); xp += g.xp; rankUp = g.rankUp;
+      if (r.i >= r.n) {
+        const top = Math.max(1, ...expPool().map(journeyIndex));
+        X.bonus = Math.round((6 + 2 * D) * (r.kind === 'weekly' ? 3 : r.kind === 'daily' ? 1.5 : 1)); X.total = r.parts + X.bonus; S.parts = (S.parts | 0) + X.total;
+        reward = Math.round(legPay(top, 1) * (r.kind === 'weekly' ? 6 : 3)); pay(reward);
+        if (r.kind === 'ladder') { E.best = Math.max(E.best, D); if (D >= E.depth) { E.depth = D + 1; X.depthUp = E.depth; } }
+        else E[r.kind] = { id: r.id, done: true };
+        E.wins += 1; E.run = null; X.done = true;
+        g = gainXp(150 + 15 * D); xp += g.xp; rankUp = g.rankUp || rankUp;
+      } else { r.stage = 'boon'; r.boonOpts = expBoonOpts(r); r.opts = null; if (!r.boonOpts.length) { r.stage = 'sector'; r.boonOpts = null; r.opts = expOptions(r); } }
+    } else if (!win) {
+      if ((r.tows | 0) > 0) { r.tows--; r.pick = null; X.tow = true; X.tows = r.tows; }
+      else { X.kept = Math.floor((r.parts | 0) / 2); S.parts = (S.parts | 0) + X.kept; E.run = null; X.over = true; }
+    }
+  }
+  save();
+  return { reward, bonus: 0, picked: e.kept, total: reward + e.kept, journeyDone: false, unlocked: null, first: false, newBest: false, best: 0, badges: e.badges, missions: e.missions,
+    stars: null, newStars: [], starPay: 0, coinMult: e.coinMult, levelUp: e.levelUp, girl: e.girl, gate: null, played: true, xp, rankUp, contract: null, tier: 0, tiers: 0, done: 0, exp: X };
+}
+
 // ---- pilot rank: XP from everything; rank n needs 45 × n² XP in total (rank 100 is about the whole 250 hours) ----
 export const RANK_MAX = 100;
 export const rankOf = (xp = S.xp) => clamp(Math.floor(Math.sqrt(Math.max(0, +xp || 0) / 45)) + 1, 1, RANK_MAX);
@@ -770,6 +889,8 @@ function gainXp(n) {
   return { xp: Math.round(n), rankUp };
 }
 // ---- completion: how much of everything is done, weighted by the hours each part is meant to take ----
+// expeditions: mostly the deep-space ladder, the rest is having met every boon, twist and kind of mission out there
+const expDone = () => { const E = expS(), n = o => Object.keys(o).length; return 0.6 * Math.min(1, E.best / EXP_DEPTH) + 0.15 * Math.min(1, n(E.seen.boons) / BOONS.length) + 0.15 * Math.min(1, n(E.seen.mut) / MUTATORS.length) + 0.1 * Math.min(1, n(E.seen.types) / MISSION_TYPES.length); };
 export function completion() {
   const legsN = JOURNEYS.length * 3, legs = JOURNEYS.reduce((a, j) => a + legsDone(j.id), 0), cT = contractTotal(), cD = JOURNEYS.reduce((a, j) => a + contractsDone(j.id), 0);
   const upT = UPGRADES.reduce((a, u) => a + u.max, 0);
@@ -778,7 +899,7 @@ export function completion() {
     { id: 'hard', hours: LONG.hard, f: (starTotal() + medalTotal()) / (legsN * 3 + legsN * 4) },
     { id: 'ship', hours: LONG.ship, f: totalLevels() / upT * 0.4 },                 // Marks and power levels (v4.2) are the other 60%
     { id: 'rank', hours: LONG.rank, f: (rankOf() - 1) / (RANK_MAX - 1) },
-    { id: 'expeditions', hours: LONG.expeditions, f: 0, soon: true },
+    { id: 'expeditions', hours: LONG.expeditions, f: expDone() },
     { id: 'families', hours: LONG.families, f: 0, soon: true },
   ];
   const tot = parts.reduce((a, p2) => a + p2.hours, 0);

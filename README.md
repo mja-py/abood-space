@@ -199,7 +199,7 @@ children's journey.
 
 The owner expected 250 hours of play; the game held about 8 to 10. The agreed plan is a story of about 30 hours and about
 250 hours to finish everything, from generated missions, deep progression and new places, with no planet locked behind
-saved coins. v4.0 is the foundation; expeditions (v4.1), mastery and ship Marks (v4.2) and four new places (v4.3, v4.4)
+saved coins. v4.0 is the foundation; contract tiers (v4.1), expeditions (v4.2), then mastery and ship Marks and four new places
 follow. The plan is in `LONG` (hours per part) in `js/meta.js`.
 
 - **Mission generator** (`mission(spec)` in `js/meta.js`): a short flight with a goal, built from a seed out of the same
@@ -227,8 +227,39 @@ Journeys a v4.0 save had already opened stay open. 144 contract flights in all.
 
 What the simulator says today (`node tools/econ.mjs`): the story takes about 4 hours for a skilled player, 7 for a
 typical one and 10 for a learner; every contract tier adds about 4, 8 and 13 hours on top. That is still short of the
-30-hour target: the rest has to come from the four new places, and the 250 hours from expeditions, robot families and
-ship Marks, which are not built yet.
+30-hour target: the rest has to come from the four new places, and the 250 hours from expeditions (built in v4.2,
+see below), robot families and ship Marks, which are not built yet.
+
+## Expeditions (v4.2)
+
+The second step of the long game: routes through deep space that are built fresh every time. Open after Mars; the
+seventh menu tile.
+
+- **A route** is five sectors (the weekly one ten; the ladder gains one every ten depths). Each sector is a generated
+  mission. At every stop the pilot picks one of three sectors (safe, steady, risky): the card shows the mission, the
+  place, the twists and the parts it pays. The last sector is always the guardians' gate (a boss rush).
+- **Boons:** after a won sector the pilot picks one of three boons for the rest of the route (`BOONS`, 24 of them:
+  spare plating, drill rounds, a wingman from the start, a shock hull, a jammer, a tow cable...). In `js/game.js`
+  `applyBoons(spec)` applies them at the start of each sector.
+- **The hull is carried** from sector to sector; one point is repaired at each stop. A lost sector costs the **tow**
+  (one per route) and is flown again; without a tow the route is over and half the parts found are kept. Leaving a
+  sector from the pause card counts as losing it.
+- **Three routes:** the deep-space **ladder** (finishing depth n opens depth n + 1, best depth is kept), **today's
+  route** and **this week's route** (the seed is the date, so every pilot gets the same one; once each). The dated
+  ones only pay extra parts and dirhams: nothing of the 100% depends on the calendar.
+- **Depth** moves the sectors up the difficulty curve and adds twists; past the end of the curve the robots keep
+  growing (`over` in `mission()`). The places are the last three journeys the pilot has finished.
+- **Rewards:** parts (kept for the ship Marks of the next step), XP, dirhams. The completion bar counts the best depth
+  (target `EXP_DEPTH` 50) and how many boons, twists and mission types have been met.
+- In `js/meta.js`: `expInfo()`, `expStart(kind)`, `expPick(k)`, `expBoon(id)`, `expAbandon()`; a sector is settled by
+  `finishMission()` (`expSettle`). The route in progress is saved (`S.exp.run`), so it survives closing the game.
+- **Also fixed here:** the tanker and the station now grow with the threat (an upgraded ship used to make escort and
+  hold missions harder, because the robots answered the upgrades and the tanker did not), a mission left during its
+  arrival is settled as that mission, Neptune's third contract tier no longer wraps to an easier curve, and on the
+  narrowest phones (568 px) the menu keeps six tiles (help moves to the top bar) and the leg buttons drop their names.
+- **Not in this step:** robot mutations (they come with the robot codex), and tuning the ladder against its hour
+  budget: `node tools/econ.mjs` puts depth 50 at roughly 16 to 38 hours of the 80 planned, on guessed win chances.
+- **Tools:** `P.expedition(27)` flies a whole route with the test pilot (`P.expedition(lv, kind, pick, depth)`).
 
 ## Screens and layout (v3.2)
 
