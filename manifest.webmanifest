@@ -1,0 +1,20 @@
+{
+  "name": "عبود إلى القمر",
+  "short_name": "عبود",
+  "description": "عبود رائد الفضاء وروبوته الذكي نبيه يطيرون من محطة فلك إلى القمر والكواكب. Abood to the Moon! A space shooter for kids.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#1c1530",
+  "theme_color": "#1c1530",
+  "categories": ["games", "kids", "entertainment"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
