@@ -811,3 +811,6 @@ svg.si .fl{fill:currentColor;stroke-width:1.4}
 .bk-row{display:flex;gap:8px;align-items:stretch} .bk-area{flex:1;min-width:0;resize:none;border:2px solid var(--ink);border-radius:10px;padding:6px 8px;font:600 11px/1.3 ui-monospace,Menlo,monospace;background:#fff;color:var(--ink);word-break:break-all}
 .bk-btns{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:0 0 46%} .bk-btns .btn{min-height:34px;padding:3px 8px;font-size:12.5px;white-space:normal;line-height:1.1}
 @media (max-height:440px){ .pl-em{width:60px;height:60px} .pl-tx b{font-size:17px} .ct-cards .card canvas{width:96px;height:72px} .ct-cards .card{padding:6px;gap:3px} }
+
+/* v4.1 contract tiers */
+.ct-tiers{display:flex;align-items:center;justify-content:center;gap:3px;font:800 11.5px/1 var(--display)} .ct-tiers em{font-style:normal;margin-inline-start:5px;opacity:.8}

@@ -682,12 +682,13 @@ function sheetContracts(body) {
   body.appendChild(el('p', 'hint', jName(jid) + ' · ' + T('ct_note')));
   const g = el('div', 'cards ct-cards');
   for (const sp of list) {
-    const cc = el('div', 'card ct' + (sp.done ? ' done' : '')), cnv = mk(192, 144); cnv.setAttribute('aria-hidden', 'true'); cc.appendChild(cnv);
+    const cc = el('div', 'card ct' + (sp.all ? ' done' : '')), cnv = mk(192, 144); cnv.setAttribute('aria-hidden', 'true'); cc.appendChild(cnv);
     setTimeout(() => missionPic(cnv, sp.type, jid), 10 + sp.ci * 20);
-    const nm = el('b', null, T('mt_' + sp.type)); if (sp.done) nm.appendChild(icon('check')); cc.appendChild(nm);
+    const nm = el('b', null, T('mt_' + sp.type)); if (sp.all) nm.appendChild(icon('check')); cc.appendChild(nm);
+    const tp = el('span', 'ct-tiers'); tp.setAttribute('role', 'img'); tp.setAttribute('aria-label', T('ct_tier', sp.tiers) + ' / ' + nf(M.TIERS || 3)); for (let k = 1; k <= (M.TIERS || 3); k++) tp.appendChild(el('i', 'star' + (k <= sp.tiers ? ' on' : ''))); tp.appendChild(el('em', null, sp.all ? T('ct_all') : T('ct_tier', sp.tier))); cc.appendChild(tp);
     cc.appendChild(el('small', null, goalLabel(sp)));
     if (sp.mut.length) { const ms = el('small', 'ct-mut'); ms.textContent = sp.mut.map(m => T('mu_' + m)).join(' · '); cc.appendChild(ms); }
-    const b = cardBtn({ text: T(sp.done ? 'ct_again' : 'ct_fly'), cls: sp.done ? 'sec' : '', onClick: () => { closeSheet(); stopTips(); if (hook('onMission', sp) === false) note(T('m_locked')); } });
+    const b = cardBtn({ text: T(sp.all ? 'ct_again' : 'ct_fly'), cls: sp.all ? 'sec' : '', onClick: () => { closeSheet(); stopTips(); if (hook('onMission', sp) === false) note(T('m_locked')); } });
     const pay = el('span', 'ct-pay'); pay.appendChild(coinIc()); pay.append(nf(sp.reward)); b.appendChild(pay);
     cc.appendChild(b); g.appendChild(cc);
   }
@@ -732,7 +733,7 @@ function rankChip() {
 // Usta's advice for a ship-level gate: "we need ship level 15, you have 13 · Usta recommends: Blaster"
 function gateText(need) {
   const rec = MM('recommend');
-  return (need.have < need.need ? T('m_need', need.need, need.have) + ' ' : '') + (need.cHave < need.cNeed ? T('m_needC', need.cNeed, need.cHave, jName(need.prev)) : '');
+  return (need.have < need.need ? T('m_need', need.need, need.have) + ' ' : '') + (need.cHave < need.cNeed ? T('m_needC', need.cNeed, need.cHave, jName(need.prev)) + ' ' : '') + (need.t2Have < need.t2Need ? T('m_needT2', need.t2Need, need.t2Have, jName(need.prev)) : '');
 }
 export function renderMenu() {
   ensureSel(); syncCoins(); syncMute();
@@ -750,7 +751,7 @@ export function renderMenu() {
     const pic = mk(224, 140); pic.setAttribute('aria-hidden', 'true'); b.appendChild(pic);
     const fill = () => { try { pic.getContext('2d').drawImage(thumb(j.planet || j.id, !open), 0, 0, 224, 140); } catch (e) {} };
     if (THUMBS.has((j.planet || j.id) + (open ? ':o' : ':l'))) fill(); else setTimeout(fill, 30 + i * 40);
-    if (gated) { const g = el('span', 'gate'); if (need.have < need.need) { g.appendChild(el('i', 'star on')); g.appendChild(el('span', null, nf(need.have) + '/' + nf(need.need))); } else { g.appendChild(icon('check')); g.appendChild(el('span', null, T('ct_btn', need.cHave, need.cNeed))); } b.appendChild(g); }
+    if (gated) { const g = el('span', 'gate'); if (need.have < need.need) { g.appendChild(el('i', 'star on')); g.appendChild(el('span', null, nf(need.have) + '/' + nf(need.need))); } else { const t2 = need.cHave >= need.cNeed; g.appendChild(icon('check')); g.appendChild(el('span', null, t2 ? T('ct_tier', 2) + ' ' + nf(need.t2Have) + '/' + nf(need.t2Need) : T('ct_btn', need.cHave, need.cNeed))); } b.appendChild(g); }
     else if (open && done < 3) { const n2 = MM('journeyNeed', j.id); if (n2 && n2.rec > n2.ship) { const g = el('span', 'gate rec'); g.innerHTML = WRENCH_SVG; g.appendChild(el('span', null, nf(n2.rec))); g.title = T('m_rec', n2.rec, n2.ship); b.appendChild(g); } }
     else if (!open) { const lk = el('span', 'lock'); lk.innerHTML = LOCK_SVG; b.appendChild(lk); }
     if (done >= 3) { const ok = el('span', 'ok'); ok.appendChild(icon('check')); b.appendChild(ok); }
@@ -785,10 +786,10 @@ export function renderMenu() {
     b.onclick = () => { if (!ok) return; selL = li; hook('onSelect', selJ, selL); renderMenu(); };
     row.appendChild(b);
   }
-  { const cl = MM('contractList', selJ) || [], cd = cl.filter(x => x.done).length, cb = el('button', 'leg ctr' + (cd >= cl.length && cl.length ? ' done' : '')); cb.type = 'button';
+  { const cl = MM('contractList', selJ) || [], cd = cl.reduce((a, x) => a + (x.tiers | 0), 0), cn = cl.length * (M.TIERS || 3), cb = el('button', 'leg ctr' + (cd >= cn && cn ? ' done' : '')); cb.type = 'button';
     const cv = mk(96, 96); cv.className = 'tile-art'; cv.setAttribute('aria-hidden', 'true'); tileArt('missions', cv); cb.appendChild(cv);
-    const tx = el('span', 'ltx'); tx.appendChild(el('span', 'lname', T('ct_title'))); tx.appendChild(el('span', 'lrow', nf(cd) + '/' + nf(cl.length))); cb.appendChild(tx);
-    cb.setAttribute('aria-label', T('ct_btn', cd, cl.length)); cb.onclick = () => openSheet('contracts'); if (cl.length) row.appendChild(cb); }
+    const tx = el('span', 'ltx'); tx.appendChild(el('span', 'lname', T('ct_title'))); tx.appendChild(el('span', 'lrow', nf(cd) + '/' + nf(cn))); cb.appendChild(tx);
+    cb.setAttribute('aria-label', T('ct_btn', cd, cn)); cb.onclick = () => openSheet('contracts'); if (cl.length) row.appendChild(cb); }
   rankChip();
   // v3 Hard tier: once a journey has all 12 medals, a switch next to Launch (faster, tougher, pays ×2)
   const hb = $('hardBtn'), hOpen = !!MM('hardOpen', selJ), hOn = hOpen && !!MM('hardOn', selJ);
@@ -1754,7 +1755,7 @@ function fillResult(r, animate) {
   else if (r.newBest) msg = T('r_newBest');
   else if (run.noHit || run.hits === 0) msg = T('r_noHit');
   else msg = T('m_legOf', r.li, 3) + ' · ' + legName(r.jid, r.li);
-  if (r.mission) msg = T('mt_' + r.mission.type) + ' · ' + (r.goalText || '') + (r.win && r.reward ? ' · ' + T('ct_reward', r.reward) : '');
+  if (r.mission) msg = T('mt_' + r.mission.type) + (r.tier > 1 ? ' · ' + T('ct_tier', r.tier) : '') + ' · ' + (r.goalText || '') + (r.win && r.reward ? ' · ' + T('ct_reward', r.reward) : '');
   else if (!duel && r.win && +run.rescueTotal > 0) msg += ' · ' + T('r_rescued', Math.min(run.rescued | 0, run.rescueTotal | 0), run.rescueTotal | 0);
   $('overMsg').textContent = msg;
   // stars (new ones pop in)

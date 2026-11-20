@@ -220,9 +220,15 @@ follow. The plan is in `LONG` (hours per part) in `js/meta.js`.
 - **Tools:** `tools/pilot.js` flies missions (`P.missions('belt', 15, [1, 2])`), `node tools/econ.mjs` reports the
   story's length from measured flight times and the gate table.
 
-What the simulator says today (`node tools/econ.mjs`): the story takes about 4 hours for a skilled player, 6 for a
-typical one and 9 for a learner. That is short of the 30-hour target: the rest has to come from more contracts per
-journey and the four new places, and the 250 hours from the parts that are not built yet.
+**Contract tiers (v4.1).** Every contract has three tiers (`TIERS`, `contractSpec(jid, ci, tier)`): the same goal one
+step up the curve with one more mutator, then two. A tier opens when the one before is done; prizes and XP grow with
+the tier. From Venus on the gate also asks for some tier-2 contracts on the journey before (`GATE`'s third number).
+Journeys a v4.0 save had already opened stay open. 144 contract flights in all.
+
+What the simulator says today (`node tools/econ.mjs`): the story takes about 4 hours for a skilled player, 7 for a
+typical one and 10 for a learner; every contract tier adds about 4, 8 and 13 hours on top. That is still short of the
+30-hour target: the rest has to come from the four new places, and the 250 hours from expeditions, robot families and
+ship Marks, which are not built yet.
 
 ## Screens and layout (v3.2)
 

@@ -1554,7 +1554,7 @@ function updateWard(dt) {
 function applyMutators() {
   const m = (run.mission && run.mission.mut) || []; run.mut = {}; for (const k of m) run.mut[k] = true;
   if (run.mut.noShield) { S = Object.assign({}, S, { shieldCd: 0 }); ship.shieldUp = false; ship.extraShield = 0; run.AS = Object.assign({}, run.AS, { regenShield: 0 }); }
-  if (run.mut.glass) { ship.maxHp = Math.min(ship.maxHp, 2); ship.hp = ship.maxHp; }
+  if (run.mut.glass) { ship.maxHp = Math.max(2, Math.ceil(ship.maxHp / 2)); ship.hp = ship.maxHp; }   // half the hull
   if (run.mut.quickPower) ship.pwK = 0.4;
 }
 function doSuper() {

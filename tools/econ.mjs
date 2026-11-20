@@ -8,7 +8,7 @@ const MISSION_SECS = { fly: 96, rescue: 72, escort: 107, hold: 96, haul: 68, bos
 const MENU = 35;                                   // seconds between flights: results, menu, hangar
 const retry = { skilled: 0.15, typical: 0.6, learning: 1.2 };   // extra attempts per flight, on average
 function story(kind) {
-  const R = retry[kind]; let t = 0, stars = 0; const rows = [];
+  const R = retry[kind]; let t = 0, stars = 0, allTiers = 0; const rows = [];
   for (let j = 0; j < M.JOURNEYS.length; j++) {
     const J = M.JOURNEYS[j], g = M.journeyNeed(J.id), list = M.contractList(J.id); const t0 = t;
     // the gate: stars so far and the contracts of the journey before (already flown below)
@@ -17,12 +17,16 @@ function story(kind) {
     const prev = j > 0 ? j - 1 : 0; t += short * (LEG_SECS[prev][1] + MENU);
     stars += short;
     for (let li = 0; li < 3; li++) { t += (LEG_SECS[j][li] + MENU) * (1 + R); stars += kind === 'skilled' ? 2.6 : kind === 'typical' ? 2 : 1.5; }
+    // tier 1 of every contract, plus the tier-2 ones the NEXT gate asks for (harder: more retries)
     for (const c of list) t += (MISSION_SECS[c.type] + MENU) * (1 + R * 1.3);
+    const nx = M.JOURNEYS[j + 1], t2 = nx ? M.journeyNeed(nx.id).t2Need : 2;
+    for (let k = 0; k < t2; k++) t += (MISSION_SECS[list[k % list.length].type] + MENU) * (1 + R * 2.2);
+    allTiers += list.reduce((a, c) => a + (MISSION_SECS[c.type] + MENU) * ((1 + R * 2.2) + (1 + R * 3.2)), 0) - t2 * 0;
     rows.push(`${J.id.padEnd(8)} gate ${String(g.need).padStart(2)} stars + ${g.cNeed} contracts | star replays ${short.toFixed(0).padStart(2)} | ${((t - t0) / 60).toFixed(0).padStart(3)} min | done at ${(t / 3600).toFixed(1)} h`);
   }
-  return { hours: t / 3600, rows };
+  return { hours: t / 3600, rows, allTiers: allTiers / 3600 };
 }
-for (const k of Object.keys(retry)) { const s = story(k); console.log(`\n--- story, ${k} player: ${s.hours.toFixed(1)} h`); console.log(s.rows.join('\n')); }
+for (const k of Object.keys(retry)) { const s = story(k); console.log(`\n--- story, ${k} player: ${s.hours.toFixed(1)} h (every contract tier on top: +${s.allTiers.toFixed(1)} h)`); console.log(s.rows.join('\n')); }
 // everything: what is built so far against the 250-hour budget
 const L = M.LONG, built = { story: true, hard: true, ship: 'partly (upgrades only; Marks and power levels come in v4.2)', rank: true, expeditions: false, families: false };
 console.log('\n--- the 250-hour budget (targets) and what exists today');

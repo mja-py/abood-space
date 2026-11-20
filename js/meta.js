@@ -667,23 +667,39 @@ export const parOf = R => R ? Math.round((R.par || 60) * (BOSS_RIG[R.id] ? 1.6 :
 export const LONG = { story: 30, hard: 20, expeditions: 80, families: 40, ship: 50, rank: 30 };   // hours per part, 250 in all
 export const MISSION_TYPES = ['fly', 'rescue', 'escort', 'hold', 'haul', 'bossrush', 'time', 'hunt'];
 export const MUTATORS = ['traffic', 'noShield', 'glass', 'fastShots', 'dark', 'gravity', 'wind', 'swarm', 'elites', 'quickPower'];
-// what opens a journey: [stars in total, contracts done on the journey before]
-const GATE = { mars: [4, 2], venus: [10, 3], belt: [18, 4], jupiter: [26, 4], saturn: [34, 5], uranus: [42, 5], neptune: [50, 6] };
+// what opens a journey: [stars in total, contracts done on the journey before, of those at tier 2 or better]
+const GATE = { mars: [4, 2, 0], venus: [10, 3, 1], belt: [18, 4, 2], jupiter: [26, 4, 2], saturn: [34, 5, 3], uranus: [42, 5, 3], neptune: [50, 6, 4] };
+// v4.1 every contract has three TIERS: the same goal again one step up the curve with one more mutator, then two. A tier
+// opens when the one before is done. The story asks for some tier-2 contracts; all three tiers count for 100%.
+export const TIERS = 3;
+const TIER_MUT = ['fastShots', 'noShield', 'dark', 'glass', 'gravity', 'wind', 'traffic', 'elites', 'swarm'], TIER_MUT_MOON = ['traffic', 'wind', 'dark', 'gravity'];
 const C_MOON = [['fly'], ['rescue'], ['haul'], ['time'], ['rescue', 'traffic'], ['haul', 'wind']];   // no robots on the Moon
 const MUT_ROT = ['fastShots', 'noShield', 'traffic', 'dark', 'glass', 'elites', 'wind', 'gravity'];
 const hash32 = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0; };
 const contractDefs = jid => {
   const j = journeyIndex(jid); if (j < 0) return [];
   if (j === 0) return C_MOON;
-  return [['rescue'], ['haul'], ['time'], [j % 2 ? 'escort' : 'hold'], ['hunt', MUT_ROT[j % 8]], ['bossrush', MUT_ROT[(j + 3) % 8]]];
+  return [['rescue'], ['haul'], ['time'], [j % 2 ? 'escort' : 'hold'], ['hunt', MUT_ROT[j % 8]], ['bossrush', ['noShield', 'glass', 'fastShots', 'dark', 'gravity'][j % 5]]];
 };
-export const contractSpec = (jid, ci) => { const d = contractDefs(jid)[ci]; return d ? { id: jid + ':c' + ci, jid, ci, type: d[0], mut: d.slice(1), seed: hash32(jid + ':c' + ci), depth: 0 } : null; };
+export const contractSpec = (jid, ci, tier = 1) => {
+  const d = contractDefs(jid)[ci]; if (!d) return null;
+  const j = journeyIndex(jid), t = clamp(tier | 0, 1, TIERS), mut = d.slice(1), type = d[0];
+  // the extra mutators of the higher tiers: rotated by journey and contract, never one that means nothing for this mission
+  const pool = (j === 0 ? TIER_MUT_MOON : TIER_MUT).filter(m => !mut.includes(m) && !(type === 'bossrush' && (m === 'traffic' || m === 'elites' || m === 'swarm' || m === 'wind')) && !((type === 'hunt' || type === 'time') && m === 'swarm'));
+  for (let k = 1; k < t && pool.length; k++) mut.push(pool.splice((j * 2 + ci * 3 + k * 5) % pool.length, 1)[0]);
+  return { id: jid + ':c' + ci, jid, ci, tier: t, type, mut, seed: hash32(jid + ':c' + ci + ':t' + t), depth: j === 0 ? t - 1 : (t - 1) * 2 };
+};
+const tierOf = id => { const rec = S.contracts[id]; return rec ? clamp(rec.t | 0 || 1, 1, TIERS) : 0; };
 export function contractList(jid) {
-  return contractDefs(jid).map((d, ci) => { const sp = contractSpec(jid, ci), rec = S.contracts[sp.id]; return Object.assign(sp, { done: !!rec, wins: rec ? rec.w | 0 : 0, reward: contractPay(jid, ci, !rec) }); });
+  return contractDefs(jid).map((d, ci) => {
+    const id = jid + ':c' + ci, got = tierOf(id), next = Math.min(TIERS, got + 1), sp = contractSpec(jid, ci, next), rec = S.contracts[id];
+    return Object.assign(sp, { done: got >= 1, tiers: got, all: got >= TIERS, wins: rec ? rec.w | 0 : 0, reward: contractPay(jid, ci, got < next, next) });
+  });
 }
-export const contractsDone = jid => contractDefs(jid).reduce((a, d, ci) => a + (S.contracts[jid + ':c' + ci] ? 1 : 0), 0);
+export const contractsDone = (jid, tier = 1) => contractDefs(jid).reduce((a, d, ci) => a + (tierOf(jid + ':c' + ci) >= tier ? 1 : 0), 0);
+export const contractTiers = jid => contractDefs(jid).reduce((a, d, ci) => a + tierOf(jid + ':c' + ci), 0);
 export const contractTotal = () => JOURNEYS.reduce((a, j) => a + contractDefs(j.id).length, 0);
-const contractPay = (jid, ci, first) => Math.round(legPay(journeyIndex(jid), 1) * (first ? 1.5 + ci * 0.15 : 0.5));
+const contractPay = (jid, ci, first, tier = 1) => Math.round(legPay(journeyIndex(jid), 1) * (first ? 1.5 + ci * 0.15 : 0.5) * (1 + 0.5 * (tier - 1)));
 
 // A mission: a short flight with a GOAL, built from a seed out of the same beats the legs use (game.js beat()).
 //   spec: { jid (theme and family), type, seed, depth (0 = the journey's own curve, +4 = one journey harder), mut: [], len? }
@@ -729,19 +745,19 @@ export function mission(spec) {
 }
 // settle a mission: coins picked are always kept; a contract pays its prize (more the first time) and counts for the gates
 export function finishMission(spec, run = {}, win = false) {
-  const e = endLike(run, !win), id = spec && spec.id, jid = spec && spec.jid, first = !!(win && id && !S.contracts[id]);
+  const e = endLike(run, !win), id = spec && spec.id, jid = spec && spec.jid, tier = clamp((spec && spec.tier) | 0 || 1, 1, TIERS), first = !!(win && id && tierOf(id) < tier);
   let reward = 0, xp = 0, rankUp = null;
   if (win && id) {
-    reward = contractPay(jid, spec.ci | 0, first); pay(reward);
-    const rec = S.contracts[id] || (S.contracts[id] = { w: 0, d: today() }); rec.w = (rec.w | 0) + 1;
+    reward = contractPay(jid, spec.ci | 0, first, tier); pay(reward);
+    const rec = S.contracts[id] || (S.contracts[id] = { w: 0, d: today(), t: 0 }); rec.w = (rec.w | 0) + 1; rec.t = Math.max(rec.t | 0 || (first ? 0 : 1), tier);
     S.stats.contracts = (S.stats.contracts | 0) + 1;
   }
-  if (win) { const g = gainXp(first ? 140 : 45); xp = g.xp; rankUp = g.rankUp; }
+  if (win) { const g = gainXp(first ? 140 * tier : 45); xp = g.xp; rankUp = g.rankUp; }
   const nx = JOURNEYS[journeyIndex(jid) + 1], unlocked = win && nx && legsDone(jid) >= 3 && isUnlocked(nx.id) && !S.seen['open_' + nx.id] ? nx.id : null;
   if (unlocked) S.seen['open_' + nx.id] = today();
   save();
   return { reward, bonus: 0, picked: e.kept, total: reward + e.kept, journeyDone: false, unlocked, first, newBest: false, best: 0, badges: e.badges, missions: e.missions,
-    stars: null, newStars: [], starPay: 0, coinMult: e.coinMult, levelUp: e.levelUp, girl: e.girl, gate: null, played: true, xp, rankUp, contract: id, done: contractsDone(jid) };
+    stars: null, newStars: [], starPay: 0, coinMult: e.coinMult, levelUp: e.levelUp, girl: e.girl, gate: null, played: true, xp, rankUp, contract: id, tier, tiers: id ? tierOf(id) : 0, done: contractsDone(jid) };
 }
 
 // ---- pilot rank: XP from everything; rank n needs 45 × n² XP in total (rank 100 is about the whole 250 hours) ----
@@ -758,7 +774,7 @@ export function completion() {
   const legsN = JOURNEYS.length * 3, legs = JOURNEYS.reduce((a, j) => a + legsDone(j.id), 0), cT = contractTotal(), cD = JOURNEYS.reduce((a, j) => a + contractsDone(j.id), 0);
   const upT = UPGRADES.reduce((a, u) => a + u.max, 0);
   const parts = [
-    { id: 'story', hours: LONG.story, f: (legs + cD) / (legsN + cT) },
+    { id: 'story', hours: LONG.story, f: (legs + JOURNEYS.reduce((a, j) => a + contractTiers(j.id), 0)) / (legsN + cT * TIERS) },
     { id: 'hard', hours: LONG.hard, f: (starTotal() + medalTotal()) / (legsN * 3 + legsN * 4) },
     { id: 'ship', hours: LONG.ship, f: totalLevels() / upT * 0.4 },                 // Marks and power levels (v4.2) are the other 60%
     { id: 'rank', hours: LONG.rank, f: (rankOf() - 1) / (RANK_MAX - 1) },
@@ -881,8 +897,14 @@ function load() {
     if (!(+d.v >= 3)) migrateV2(d);
     if (!(+d.v >= 4)) migrateV3(d);
   }
+  if (!S.tiersSeen) { // v4.1 added tier-2 contracts to the gates: whatever the v4.0 rule had opened stays open
+    for (let j = 1; j < JOURNEYS.length; j++) { const J = JOURNEYS[j], g = GATE[J.id] || [0, 0], pv = JOURNEYS[j - 1].id; if ((+(S.prog || {})[pv] || 0) >= 3 && d && isObj(d.contracts) && Object.keys(d.stars || {}).length && contractCountRaw(d, pv) >= g[1] && starCountRaw(d) >= g[0]) S.open[J.id] = true; }
+    S.tiersSeen = 1;
+  }
   tidy();
 }
+const starCountRaw = d => Object.values(d.stars || {}).reduce((a, b) => a + ((b & 1) ? 1 : 0) + ((b & 2) ? 1 : 0) + ((b & 4) ? 1 : 0), 0);
+const contractCountRaw = (d, jid) => Object.keys(d.contracts || {}).filter(k => k.startsWith(jid + ':c')).length;
 // v3 -> v4: planets open by stars and contracts now. Nothing is taken away: every journey the old ship-level rule had
 // already opened stays open (S.open), and the pilot starts with the XP their flights so far are worth.
 function migrateV3(d) {
@@ -1167,8 +1189,8 @@ export const legsDone = jid => S.prog[jid] || 0;
 // contracts are done. `need`/`have` are stars now; `rec` is the recommended ship level (advice, not a lock).
 export function journeyNeed(jid) {
   const j = journeyIndex(jid), J = JOURNEYS[j], g = GATE[jid] || [0, 0], prev = j > 0 ? JOURNEYS[j - 1].id : null;
-  const have = starTotal(), cHave = prev ? contractsDone(prev) : 0;
-  return { need: g[0], have, cNeed: g[1], cHave, prev, rec: J ? J.need || 0 : 0, ship: shipLevel(), ok: have >= g[0] && cHave >= g[1] };
+  const have = starTotal(), cHave = prev ? contractsDone(prev) : 0, t2Have = prev ? contractsDone(prev, 2) : 0;
+  return { need: g[0], have, cNeed: g[1], cHave, t2Need: g[2] | 0, t2Have, prev, rec: J ? J.need || 0 : 0, ship: shipLevel(), ok: have >= g[0] && cHave >= g[1] && t2Have >= (g[2] | 0) };
 }
 export function isUnlocked(jid) {
   const j = journeyIndex(jid); if (j < 0) return false; if (j === 0) return true;
